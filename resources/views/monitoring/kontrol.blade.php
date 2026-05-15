@@ -253,7 +253,7 @@
         $ph     = $latest->ph_tanah ?? 0;
         $progClass = $kel < 30 ? 'prog-dry' : ($kel > 70 ? 'prog-wet' : 'prog-ok');
         $param  = $sensor->parameterPenyiraman ?? null;
-        $modeAuto = $param->mode_auto ?? false;
+        $modeAuto = $sensor->kontrolSiram->mode_auto ?? true;
         $pumpActive = isset($penyiramanAktif[$sensor->id_sensor]) && $penyiramanAktif[$sensor->id_sensor];
         $online = $sensor->status;
     @endphp

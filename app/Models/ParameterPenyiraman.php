@@ -10,9 +10,9 @@ class ParameterPenyiraman extends Model
     protected $primaryKey = 'id_parameter';
     public    $timestamps = false;
 
-    protected $fillable   = ['id_sensor', 'min_kelembapan', 'max_kelembapan', 'min_ph', 'max_ph', 'mode_auto'];
+    protected $fillable   = ['id_sensor', 'min_kelembapan', 'max_kelembapan', 'min_ph', 'max_ph'];
 
-    protected $casts = ['mode_auto' => 'boolean'];
+    protected $casts = [];
 
     public function sensor()
     {

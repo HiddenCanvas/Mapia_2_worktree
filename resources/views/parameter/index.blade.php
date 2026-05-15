@@ -122,8 +122,11 @@
                 <h3>{{ $p->sensor->nama_sensor ?? 'Sensor Tanpa Nama' }}</h3>
                 <p>{{ $p->sensor->lokasi ?? 'Lokasi Umum' }}</p>
             </div>
-            <span class="mode-badge {{ $p->mode_auto ? 'mode-auto' : 'mode-manual' }}">
-                {{ $p->mode_auto ? 'Otomatis' : 'Manual' }}
+            @php
+                $modeAuto = $p->sensor->kontrolSiram->mode_auto ?? true;
+            @endphp
+            <span class="mode-badge {{ $modeAuto ? 'mode-auto' : 'mode-manual' }}">
+                {{ $modeAuto ? 'Otomatis' : 'Manual' }}
             </span>
         </div>
 

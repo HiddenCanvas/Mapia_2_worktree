@@ -32,4 +32,14 @@ class Sensor extends Model
     {
         return $this->hasMany(RiwayatPenyiraman::class, 'id_sensor', 'id_sensor');
     }
+
+    public function kontrolSiram()
+    {
+        return $this->hasOne(KontrolSiram::class, 'id_sensor', 'id_sensor');
+    }
+
+    public function historyKelembapans()
+    {
+        return $this->hasMany(HistoryKelembapan::class, 'id_sensor', 'id_sensor');
+    }
 }

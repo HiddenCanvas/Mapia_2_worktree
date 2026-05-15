@@ -236,27 +236,7 @@
                 </div>
             </div>
 
-            <div class="config-section">
-                <div class="config-title">Pilih Mode</div>
-                <div class="mode-selector">
-                    <div class="mode-option">
-                        <input type="radio" name="mode_auto" id="auto" value="1"
-                               {{ old('mode_auto', $parameter->mode_auto) ? 'checked' : '' }}>
-                        <label for="auto">
-                            <span class="mode-name">Otomatis</span>
-                            <span class="mode-desc">Sistem menyiram sendiri</span>
-                        </label>
-                    </div>
-                    <div class="mode-option">
-                        <input type="radio" name="mode_auto" id="manual" value="0"
-                               {{ !old('mode_auto', $parameter->mode_auto) ? 'checked' : '' }}>
-                        <label for="manual">
-                            <span class="mode-name">Manual</span>
-                            <span class="mode-desc">Anda kontrol sendiri</span>
-                        </label>
-                    </div>
-                </div>
-            </div>
+
 
             <div style="margin-top:20px; font-size:13px; color:#888;">
                 Nilai default: Min 40%, Max 70% — sesuaikan kondisi bibit pepaya

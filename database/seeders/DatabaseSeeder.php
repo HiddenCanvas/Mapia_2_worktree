@@ -12,6 +12,7 @@ use App\Models\RiwayatSensor;
 use App\Models\JenisNotif;
 use App\Models\Notifikasi;
 use App\Models\RiwayatPenyiraman;
+use App\Models\HistoryKelembapan;
 
 class DatabaseSeeder extends Seeder
 {
@@ -74,6 +75,13 @@ class DatabaseSeeder extends Seeder
                     'ph_tanah'   => $phReadings[$i][$j % count($phReadings[$i])],
                     'created_at' => $base->copy()->addHours($j * 6),
                 ]);
+
+                // Tambahkan juga ke history_kelembapans (tabel baru)
+                HistoryKelembapan::create([
+                    'id_sensor'  => $sensor->id_sensor,
+                    'kelembapan' => $kel,
+                    'created_at' => $base->copy()->addHours($j * 6),
+                ]);
             }
         }
 
@@ -85,6 +93,10 @@ class DatabaseSeeder extends Seeder
             ['kategori' => 4, 'keterangan' => 'pH Terlalu Tinggi'],
             ['kategori' => 5, 'keterangan' => 'Penyiraman Selesai'],
             ['kategori' => 6, 'keterangan' => 'Sensor Offline'],
+            ['kategori' => 7, 'keterangan' => 'Mode Penyiraman Diubah'],
+            ['kategori' => 8, 'keterangan' => 'Parameter Diubah'],
+            ['kategori' => 9, 'keterangan' => 'Pompa Dinyalakan Manual'],
+            ['kategori' => 10, 'keterangan' => 'Pompa Dimatikan Manual'],
         ];
         $jenisModels = [];
         foreach ($jenisData as $jd) {

@@ -39,6 +39,10 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/export', [RiwayatController::class, 'export'])->name('export');
     });
 
+    Route::prefix('history-kelembapan')->name('history-kelembapan.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\HistoryKelembapanController::class, 'index'])->name('index');
+    });
+
     Route::prefix('notifikasi')->name('notifikasi.')->group(function () {
         Route::get('/', [NotifikasiController::class, 'index'])->name('index');
         Route::post('/tandai-semua', [NotifikasiController::class, 'tandaiSemua'])->name('tandai-semua');

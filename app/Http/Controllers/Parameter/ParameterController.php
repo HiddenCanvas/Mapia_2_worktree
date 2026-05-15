@@ -45,7 +45,6 @@ class ParameterController extends Controller
             'max_kelembapan' => 'required|numeric|min:0|max:100|gte:min_kelembapan',
             'min_ph'         => 'required|numeric|min:0|max:14',
             'max_ph'         => 'required|numeric|min:0|max:14|gte:min_ph',
-            'mode_auto'      => 'nullable|in:0,1',
         ]);
 
         $parameter->update([
@@ -53,8 +52,25 @@ class ParameterController extends Controller
             'max_kelembapan' => $validated['max_kelembapan'],
             'min_ph'         => $validated['min_ph'],
             'max_ph'         => $validated['max_ph'],
-            'mode_auto'      => isset($validated['mode_auto']) ? (bool)$validated['mode_auto'] : false,
         ]);
+
+        // Buat notifikasi parameter diubah
+        $jenisNotif = \App\Models\JenisNotif::firstOrCreate(
+            ['kategori' => 8],
+            ['keterangan' => 'Parameter Diubah']
+        );
+        \App\Models\Notifikasi::create([
+            'id_jenis_notif' => $jenisNotif->id_jenis_notif,
+            'id_user'        => Auth::id(),
+            'tanggal'        => now()->toDateString(),
+            'waktu'          => now()->toTimeString(),
+            'isi_data'       => "Parameter ambang batas untuk sensor {$parameter->sensor->nama_sensor} berhasil diperbarui.",
+        ]);
+
+        // KEDEPANNYA UNTUK IOT:
+        // Kirim payload JSON ke ESP32 yang berisi parameter min/max baru, agar ESP32 bisa memproses secara mandiri.
+        // Contoh payload: $payload = json_encode(['min_kel' => $parameter->min_kelembapan, 'max_kel' => $parameter->max_kelembapan]);
+        // MQTT::publish('mapia/sensor/'.$parameter->sensor->mac_address.'/parameter', $payload);
 
         return redirect()->route('parameter.index')
             ->with('success', 'Parameter sensor berhasil disimpan!');
