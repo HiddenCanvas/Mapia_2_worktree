@@ -12,7 +12,12 @@ class ParameterPenyiraman extends Model
 
     protected $fillable   = ['id_sensor', 'min_kelembapan', 'max_kelembapan', 'min_ph', 'max_ph'];
 
-    protected $casts = [];
+    protected $casts = [
+        'min_kelembapan' => 'float',
+        'max_kelembapan' => 'float',
+        'min_ph'         => 'float',
+        'max_ph'         => 'float',
+    ];
 
     public function sensor()
     {
