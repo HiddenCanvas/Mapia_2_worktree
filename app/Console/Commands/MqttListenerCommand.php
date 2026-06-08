@@ -8,7 +8,6 @@ use App\Models\Sensor;
 use App\Models\HistoryKelembapan;
 use App\Models\KontrolSiram;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
 
 class MqttListenerCommand extends Command
 {
@@ -28,7 +27,7 @@ class MqttListenerCommand extends Command
         $this->info('🟢 MQTT Listener started...');
         Log::info('[MQTT LISTENER] Started');
 
-        // Connect to EMQX
+        // Connect to EMQX Broker
         if (!$this->mqttService->connect()) {
             $this->error('✗ Failed to connect to MQTT broker');
             return 1;
@@ -36,19 +35,20 @@ class MqttListenerCommand extends Command
 
         $this->info('✓ Connected to MQTT Broker');
 
-        // Subscribe to wildcard topic untuk semua sensor
+        // Subscribe to wildcard topic untuk data sensor
         // Pattern: mapia/sensor/MAC_ADDRESS/data
         $this->mqttService->subscribe('mapia/sensor/+/data', function (string $topic, string $message) {
             $this->processSensorData($topic, $message);
         });
 
-        // Subscribe to status topic
+        // Subscribe to status topic (Antisipasi jika digunakan di masa depan)
         // Pattern: mapia/sensor/MAC_ADDRESS/status
         $this->mqttService->subscribe('mapia/sensor/+/status', function (string $topic, string $message) {
             $this->processStatus($topic, $message);
         });
 
         // Subscribe to heartbeat
+        // Pattern: mapia/sensor/MAC_ADDRESS/heartbeat
         $this->mqttService->subscribe('mapia/sensor/+/heartbeat', function (string $topic, string $message) {
             $this->processHeartbeat($topic, $message);
         });
@@ -56,55 +56,82 @@ class MqttListenerCommand extends Command
         $this->info('✓ Subscribed to topics');
         $this->line('Listening for messages... Press Ctrl+C to stop');
 
-        // Loop to listen messages
+        // Loop tiada henti untuk mendengarkan pesan masuk
         try {
-            $this->mqttService->loop();
+            while ($this->mqttService->getClient() && $this->mqttService->getClient()->isConnected()) {
+                $this->mqttService->loop();
+                
+                // Jeda 100ms agar menghemat penggunaan CPU Server
+                usleep(100000); 
+            }
         } catch (\Exception $e) {
             Log::error('[MQTT LISTENER] Error: ' . $e->getMessage());
             $this->error('✗ Error: ' . $e->getMessage());
         } finally {
             $this->mqttService->disconnect();
+            $this->info('🔴 MQTT Listener stopped.');
         }
 
         return 0;
     }
 
     /**
-     * Process sensor data dari ESP32
+     * Process sensor data dari ESP32 (Pilihan A - Sinkronisasi Semua Data)
      * Topic: mapia/sensor/{MAC}/data
-     * Payload: {"kelembapan": 65.5, "id_sensor": 1, "pump": "ON", "mode": "otomatis", "kondisi": "LEMBAP", "uptime": 120}
+     * Payload: {"kelembapan": 0, "ph_tanah": 3.37, "id_sensor": 1, "pump": "OFF", "mode": "otomatis"}
      */
     private function processSensorData(string $topic, string $message): void
     {
         try {
             $data = json_decode($message, true);
             
+            // 1. Validasi format JSON
+            if (!$data || !is_array($data)) {
+                Log::warning('[MQTT] Sensor data payload is not a valid JSON: ' . $message);
+                return;
+            }
+            
+            // Periksa parameter wajib
             if (!isset($data['id_sensor'], $data['kelembapan'])) {
-                Log::warning('[MQTT] Incomplete data: ' . $message);
+                Log::warning('[MQTT] Incomplete data payload received: ' . $message);
                 return;
             }
 
             $sensorId = $data['id_sensor'];
             $kelembapan = $data['kelembapan'];
+            $phTanah = $data['ph_tanah'] ?? 7.0; 
 
-            // Verifikasi sensor exists
+            // 2. Verifikasi keberadaan Sensor di Database
             $sensor = Sensor::find($sensorId);
             if (!$sensor) {
-                Log::warning('[MQTT] Sensor not found: ' . $sensorId);
-                return;
+                Log::warning('[MQTT] Sensor ID not found in database: ' . $sensorId);
+                return; 
             }
 
-            // Simpan ke HistoryKelembapan
+            // 3. Simpan Riwayat Berkala ke HistoryKelembapan
             HistoryKelembapan::create([
-                'id_sensor' => $sensorId,
+                'id_sensor'  => $sensorId,
                 'kelembapan' => $kelembapan,
-                'kondisi' => $data['kondisi'] ?? 'UNKNOWN',
-                'uptime' => $data['uptime'] ?? 0,
+                'ph_tanah'   => $phTanah,
+                'kondisi'    => $data['kondisi'] ?? 'UNKNOWN',
+                'uptime'     => $data['uptime'] ?? 0,
             ]);
 
-            Log::info('[MQTT] Data saved - Sensor: ' . $sensorId . ' | Kelembapan: ' . $kelembapan . '%');
+            // 4. Update Status Pompa & Mode secara Real-time ke DB KontrolSiram
+            if (isset($data['pump'])) {
+                $sensor->kontrolSiram()->updateOrCreate(
+                    ['id_sensor' => $sensor->id_sensor],
+                    [
+                        'status_pompa' => $data['pump'] === 'ON', 
+                        'mode_auto'    => isset($data['mode']) && $data['mode'] === 'otomatis', 
+                    ]
+                );
+                Log::info('[MQTT] KontrolSiram updated directly from data payload for Sensor: ' . $sensorId);
+            }
 
-            // Broadcast to web (real-time)
+            Log::info('[MQTT] Data saved successfully - Sensor: ' . $sensorId . ' | Kelembapan: ' . $kelembapan . '% | pH: ' . $phTanah);
+
+            // 5. Broadcast Real-time ke Frontend Web
             broadcast(new \App\Events\SensorDataUpdated(
                 $sensorId,
                 $kelembapan,
@@ -119,57 +146,31 @@ class MqttListenerCommand extends Command
     }
 
     /**
-     * Process status dari ESP32
+     * Process status dari ESP32 (Versi Aman)
      * Topic: mapia/sensor/{MAC}/status
-     * Payload: {"online": true, "pump": "ON", "mode": "otomatis", "kel": 65.5, "kondisi": "LEMBAP", "min_kel": 40, "max_kel": 70, "rssi": -55, "uptime": 120}
      */
     private function processStatus(string $topic, string $message): void
     {
         try {
             $data = json_decode($message, true);
             
-            // Extract MAC address from topic: mapia/sensor/{MAC}/status
+            if (!$data || !is_array($data)) {
+                return;
+            }
+            
             $parts = explode('/', $topic);
             $mac = $parts[2] ?? null;
 
-            if (!$mac) {
-                Log::warning('[MQTT] Invalid topic format: ' . $topic);
-                return;
-            }
+            if (!$mac) return;
 
-            // Find sensor by MAC address
             $sensor = Sensor::where('mac_address', $mac)->first();
-            if (!$sensor) {
-                Log::warning('[MQTT] Sensor not found for MAC: ' . $mac);
-                return;
-            }
+            if (!$sensor) return;
 
-            // Update status ke database
-            $sensor->update(['status' => $data['online'] ?? true]);
+            // Update status online alat
+            $isOnline = isset($data['online']) ? (bool)$data['online'] : true;
+            $sensor->update(['status' => $isOnline]);
 
-            // Update parameter if received
-            if (isset($data['min_kel'], $data['max_kel'])) {
-                $sensor->parameterPenyiraman()->updateOrCreate(
-                    ['id_sensor' => $sensor->id_sensor],
-                    [
-                        'min_kelembapan' => $data['min_kel'],
-                        'max_kelembapan' => $data['max_kel'],
-                    ]
-                );
-            }
-
-            // Update pump status
-            if (isset($data['pump'])) {
-                $sensor->kontrolSiram()->updateOrCreate(
-                    ['id_sensor' => $sensor->id_sensor],
-                    [
-                        'status_pompa' => $data['pump'] === 'ON',
-                        'mode_auto' => $data['mode'] === 'otomatis',
-                    ]
-                );
-            }
-
-            Log::info('[MQTT] Status updated - MAC: ' . $mac . ' | Online: ' . ($data['online'] ? 'true' : 'false'));
+            Log::info('[MQTT] Status updated via status topic - MAC: ' . $mac . ' | Online: ' . ($isOnline ? 'true' : 'false'));
 
         } catch (\Exception $e) {
             Log::error('[MQTT] Error processing status: ' . $e->getMessage());
@@ -178,13 +179,13 @@ class MqttListenerCommand extends Command
 
     /**
      * Process heartbeat dari ESP32
+     * Topic: mapia/sensor/{MAC}/heartbeat
      */
     private function processHeartbeat(string $topic, string $message): void
     {
         try {
             $data = json_decode($message, true);
             
-            // Extract MAC address
             $parts = explode('/', $topic);
             $mac = $parts[2] ?? null;
 

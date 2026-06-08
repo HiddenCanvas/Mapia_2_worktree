@@ -40,9 +40,14 @@ class MqttService
                 MqttClient::MQTT_3_1_1
             );
 
+            // PERBAIKAN DI SINI:
+            // 1. Tambahkan username & password agar bisa login ke EMQX
+            // 2. Ubah setVerifyPeer menjadi setTlsVerifyPeer
             $connectionSettings = (new ConnectionSettings())
+                ->setUsername($this->username)
+                ->setPassword($this->password)
                 ->setUseTls(true)
-                ->setVerifyPeer(false)
+                ->setTlsVerifyPeer(false)
                 ->setTlsSelfSignedAllowed(true)
                 ->setKeepAliveInterval(env('MQTT_KEEP_ALIVE', 60));
 
