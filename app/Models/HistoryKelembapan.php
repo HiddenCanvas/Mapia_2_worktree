@@ -9,7 +9,7 @@ class HistoryKelembapan extends Model
     protected $table = 'history_kelembapans';
     protected $primaryKey = 'id_history';
 
-    protected $fillable = ['id_sensor', 'kelembapan'];
+    protected $fillable = ['id_sensor', 'kelembapan', 'kondisi', 'uptime'];
 
     public function sensor()
     {
