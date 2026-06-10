@@ -19,8 +19,17 @@ Route::prefix('v1')->group(function () {
     // Get all sensors
     Route::get('/sensors', [SensorController::class, 'getSensors']);
 
+    // ✅ Live data semua sensor (dipanggil dashboard via polling)
+    Route::get('/sensors/live/all', [SensorController::class, 'getAllLiveData']);
+
     // Get detail sensor + latest data
     Route::get('/sensors/{id}', [SensorController::class, 'getSensorDetail']);
+
+    // ✅ Live data satu sensor (dipanggil monitoring/kontrol via polling)
+    Route::get('/sensors/{id}/live', [SensorController::class, 'getLiveData']);
+
+    // ✅ History kelembapan untuk chart
+    Route::get('/sensors/{id}/history', [SensorController::class, 'getHistory']);
 
     // Update parameter penyiraman
     Route::patch('/sensors/{id}/parameter', [SensorController::class, 'updateParameter']);

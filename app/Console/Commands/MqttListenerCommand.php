@@ -28,7 +28,6 @@ class MqttListenerCommand extends Command
 
         $this->info('✅ Terhubung ke broker MQTT');
 
-        // Subscribe wildcard — tangkap semua MAC
         $mqtt->subscribe('mapia/sensor/+/data', function (string $topic, string $message) {
             $this->prosesData($topic, $message);
         });
@@ -38,11 +37,10 @@ class MqttListenerCommand extends Command
         });
 
         $mqtt->subscribe('mapia/sensor/+/heartbeat', function (string $topic, string $message) {
-            // Cukup log saja
             $parts = explode('/', $topic);
             $mac   = $parts[2] ?? '?';
             $data  = json_decode($message, true);
-            $this->line("💓 Heartbeat dari {$mac} | RSSI: " . ($data['rssi'] ?? '?') . " dBm");
+            $this->line("💓 Heartbeat dari {$mac} | RSSI: " . ($data['rssi'] ?? '?') . " dBm | Heap: " . ($data['heap'] ?? '?'));
         });
 
         $this->info('📡 Listening... (Ctrl+C untuk berhenti)');
@@ -64,13 +62,25 @@ class MqttListenerCommand extends Command
         return 0;
     }
 
+    /**
+     * Normalisasi MAC address:
+     * "B0:CB:D8:03:ED:40" → "B0CBD803ED40"
+     * "b0:cb:d8:03:ed:40" → "B0CBD803ED40"
+     * "B0CBD803ED40"      → "B0CBD803ED40" (sudah bersih)
+     */
+    private function normalizeMac(string $mac): string
+    {
+        return strtoupper(str_replace([':', '-', '.', ' '], '', $mac));
+    }
+
     private function prosesData(string $topic, string $message): void
     {
         // Ekstrak MAC dari topic: mapia/sensor/B0CBD803ED40/data
-        $parts = explode('/', $topic);
-        $mac   = $parts[2] ?? null;
+        $parts     = explode('/', $topic);
+        $macRaw    = $parts[2] ?? null;
+        $mac       = $this->normalizeMac($macRaw ?? '');
 
-        $this->line("\n📨 Data masuk dari MAC: {$mac}");
+        $this->line("\n📨 Data masuk dari MAC: {$macRaw} (normalized: {$mac})");
         $this->line("   Payload: {$message}");
 
         $data = json_decode($message, true);
@@ -80,16 +90,20 @@ class MqttListenerCommand extends Command
             return;
         }
 
-        // Cari sensor berdasarkan MAC (tanpa titik dua, uppercase)
-        $sensor = Sensor::where('mac_address', strtoupper($mac))->first();
+        // Cari sensor berdasarkan MAC yang sudah dinormalisasi
+        $sensor = Sensor::where('mac_address', $mac)->first();
 
         if (!$sensor) {
             $this->warn("⚠️  Sensor dengan MAC [{$mac}] tidak ditemukan di database!");
-            $this->warn("    Pastikan MAC di database sama dengan MAC ESP32.");
+            $this->warn("    MAC di database yang tersedia:");
+            Sensor::select('id_sensor', 'nama_sensor', 'mac_address')->get()->each(function ($s) {
+                $this->warn("    → ID {$s->id_sensor} | {$s->nama_sensor} | {$s->mac_address}");
+            });
             return;
         }
 
         $kelembapan = $data['kelembapan'] ?? null;
+        $phTanah    = $data['ph_tanah']   ?? 7.0;
         $kondisi    = $data['kondisi']    ?? 'UNKNOWN';
         $uptime     = $data['uptime']     ?? 0;
         $pumpStr    = $data['pump']       ?? 'OFF';
@@ -100,10 +114,11 @@ class MqttListenerCommand extends Command
             return;
         }
 
-        // Simpan ke history_kelembapans
+        // Simpan ke history_kelembapans (termasuk ph_tanah)
         HistoryKelembapan::create([
             'id_sensor'  => $sensor->id_sensor,
             'kelembapan' => $kelembapan,
+            'ph_tanah'   => $phTanah,
             'kondisi'    => $kondisi,
             'uptime'     => $uptime,
         ]);
@@ -130,13 +145,13 @@ class MqttListenerCommand extends Command
             $uptime
         ));
 
-        $this->info("✅ Data disimpan: Sensor [{$sensor->nama_sensor}] | Kelembapan: {$kelembapan}% | Kondisi: {$kondisi} | Pompa: {$pumpStr}");
+        $this->info("✅ Tersimpan: [{$sensor->nama_sensor}] Kelembapan: {$kelembapan}% | pH: {$phTanah} | Kondisi: {$kondisi} | Pompa: {$pumpStr} | Mode: {$modeStr}");
     }
 
     private function prosesStatus(string $topic, string $message): void
     {
-        $parts = explode('/', $topic);
-        $mac   = strtoupper($parts[2] ?? '');
+        $parts  = explode('/', $topic);
+        $mac    = $this->normalizeMac($parts[2] ?? '');
 
         $data = json_decode($message, true);
         if (!$data) return;
@@ -147,6 +162,6 @@ class MqttListenerCommand extends Command
         $isOnline = (bool) ($data['online'] ?? true);
         $sensor->update(['status' => $isOnline]);
 
-        $this->line("📡 Status dari {$mac}: " . ($isOnline ? 'Online' : 'Offline'));
+        $this->line("📡 Status dari {$mac}: " . ($isOnline ? '🟢 Online' : '🔴 Offline'));
     }
 }
