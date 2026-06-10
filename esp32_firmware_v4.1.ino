@@ -1,460 +1,295 @@
-// ╔══════════════════════════════════════════════════════════╗
-// ║          MAPIA ESP32 — Firmware v4.1 (EMQX)              ║
-// ║            Production-Ready Configuration                ║
-// ╚══════════════════════════════════════════════════════════╝
+// #include <WiFi.h>
+// #include <WiFiClientSecure.h>
+// #include <PubSubClient.h>
+// #include <ArduinoJson.h>
 
-#include <WiFi.h>
-#include <WiFiClientSecure.h>
-#include <PubSubClient.h>
-#include <ArduinoJson.h>
-#include <Preferences.h>
+// // ─── SERTIFIKAT EMQX CLOUD ───
+// const char* ROOT_CA = R"EOF(-----BEGIN CERTIFICATE-----
+// MIIDjjCCAnagAwIBAgIQAzrx5qcRqaC7KGSxHQn65TANBgkqhkiG9w0BAQsFADBh
+// MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3
+// d3cuZGlnaWNlcnQuY29tMSAwHgYDVQQDExdEaWdpQ2VydCBHbG9iYWwgUm9vdCBH
+// MjAeFw0xMzA4MDExMjAwMDBaFw0zODAxMTUxMjAwMDBaMGExCzAJBgNVBAYTAlVT
+// MRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5j
+// b20xIDAeBgNVBAMTF0RpZ2lDZXJ0IEdsb2JhbCBSb290IEcyMIIBIjANBgkqhkiG
+// 9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuzfNNNx7a8myaJCtSnX/RrohCgiN9RlUyfuI
+// 2/Ou8jqJkTx65qsGGmvPrC3oXgkkRLpimn7Wo6h+4FR1IAWsULecYxpsMNzaHxmx
+// 1x7e/dfgy5SDN67sH0NO3Xss0r0upS/kqbitOtSZpLYl6ZtrAGCSYP9PIUkY92eQ
+// q2EGnI/yuum06ZIya7XzV+hdG82MHauVBJVJ8zUtluNJbd134/tJS7SsVQepj5Wz
+// tCO7TG1F8PapspUwtP1MVYwnSlcUfIKdzXOS0xZKBgyMUNGPHgm+F6HmIcr9g+UQ
+// vIOlCsRnKPZzFBQ9RnbDhxSJITRNrw9FDKZJobq7nMWxM4MphQIDAQABo0IwQDAP
+// BgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBhjAdBgNVHQ4EFgQUTiJUIBiV
+// 5uNu5g/6+rkS7QYXjzkwDQYJKoZIhvcNAQELBQADggEBAGBnKJRvDkhj6zHd6mcY
+// 1Yl9PMWLSn/pvtsrF9+wX3N3KjITOYFnQoQj8kVnNeyIv/iPsGEMNKSuIEyExtv4
+// NeF22d+mQrvHRAiGfzZ0JFrabA0UWTW98kndth/Jsw1HKj2ZL7tcu7XUIOGZX1NG
+// Fdtom/DzMNU+MeKNhJ7jitralj41E6Vf8PlwUHBHQRFXGU7Aj64GxJUTFy8bJZ91
+// 8rGOmaFvE7FBcf6IKshPECBV1/MUReXgRPTqh5Uykw7+U0b6LJ3/iyK5S9kJRaTe
+// pLiaWN0bfVKfjllDiIGknibVb63dDcY3fe0Dkhvld1927jyNxF1WW6LZZm6zNTfl
+// MrY=
+// -----END CERTIFICATE-----)EOF";
 
-// ╔══════════════════════════════════════════════════════════╗
-// ║   ✏️   KONFIGURASI — EDIT BAGIAN INI SAJA                  ║
-// ╚══════════════════════════════════════════════════════════╝
+// // ─── KONFIGURASI ───
+// const char* WIFI_SSID     = "Pernahdipakaiiot";
+// const char* WIFI_PASSWORD = "1sampai5";
 
-// ── WiFi ────────────────────────────────────────────────────
-#define WIFI_SSID       "Mattew's S25 Edge"
-#define WIFI_PASSWORD   "uqrmntxbbbg92ay"
+// // Broker EMQX Cloud
+// const char* MQTT_BROKER   = "x1517f89.ala.asia-southeast1.emqxsl.com";
+// const int   MQTT_PORT     = 8883;
+// const char* MQTT_USER     = "Mapia";      
+// const char* MQTT_PASS     = "Mapia123";   
 
-// ── EMQX Cloud Broker ───────────────────────────────────────
-#define MQTT_BROKER    "x1517f89.ala.asia-southeast1.emqxsl.com"
-#define MQTT_PORT      8883
-#define MQTT_USER      "Mapia"
-#define MQTT_PASS      "Mapia123"
+// const int   SENSOR_DB_ID  = 1;
 
-// ── Sensor ──────────────────────────────────────────────────
-#define SENSOR_DB_ID    1
+// const int PIN_MOISTURE    = 34;
+// const int PIN_PH          = 35;
+// const int PIN_RELAY       = 26;
 
-// ── Kalibrasi Kelembapan ─────────────────────────────────────
-#define MOISTURE_DRY    2800
-#define MOISTURE_WET    1200
+// const unsigned long INTERVAL_KIRIM = 30000;
+// const int MOISTURE_DRY    = 2800;
+// const int MOISTURE_WET    = 1200;
+// const float PH_OFFSET     = 0.00;
 
-// ── Parameter Penyiraman Default ─────────────────────────────
-#define DEFAULT_MIN_KEL  40.0
-#define DEFAULT_MAX_KEL  70.0
+// // ─── VARIABEL GLOBAL ───
+// WiFiClientSecure  wifiClient;
+// PubSubClient      mqttClient(wifiClient);
 
-// ╚══════════════════════════════════════════════════════════╝
+// String  macAddress;
+// String  topicPublish;
+// String  topicPump;
+// String  topicMode;
 
-#define PIN_MOISTURE    34
-#define PIN_RELAY       25
-#define PIN_BTN_MODE     0
-#define PIN_LED_STATUS   2
+// bool    modeAuto    = true;
+// bool    pumpStatus  = false;
 
-#define INTERVAL_KIRIM      30000UL
-#define INTERVAL_HEARTBEAT  60000UL
-#define POMPA_MAX_DURASI   300000UL
-#define DEBOUNCE_MS           200UL
-#define WIFI_TIMEOUT        30000UL
-#define MQTT_TIMEOUT        10000UL
+// float   minKelembapan = 40.0;
+// float   maxKelembapan = 70.0;
+// float   minPh         = 5.5;
+// float   maxPh         = 7.0;
 
-Preferences       prefs;
-WiFiClientSecure  wifiClient;
-PubSubClient      mqttClient(wifiClient);
+// unsigned long lastKirim = 0;
 
-// ── State ───────────────────────────────────────────────────
-bool    modeAuto   = true;
-bool    pumpOn     = false;
-float   lastKel    = 0;
-String  kondisi    = "?";
-float   pMinKel    = DEFAULT_MIN_KEL;
-float   pMaxKel    = DEFAULT_MAX_KEL;
+// // ─── FUNGSI SENSOR & AKTUATOR ───
+// float bacaKelembapan() {
+//   long total = 0;
+//   for (int i = 0; i < 10; i++) {
+//     total += analogRead(PIN_MOISTURE);
+//     delay(10);
+//   }
+//   int raw = total / 10;
+//   float persen = map(raw, MOISTURE_DRY, MOISTURE_WET, 0, 100);
+//   persen = constrain(persen, 0.0, 100.0);
+//   Serial.printf("[SENSOR] Moisture RAW: %d → %.1f%%\n", raw, persen);
+//   return persen;
+// }
 
-String  macAddr;
-String  tData, tPump, tMode, tParam, tStatus, tAlert, tHeart;
+// float bacaPh() {
+//   long total = 0;
+//   for (int i = 0; i < 10; i++) {
+//     total += analogRead(PIN_PH);
+//     delay(10);
+//   }
+//   int raw = total / 10;
+//   float voltage = raw * (3.3 / 4095.0);
+//   float ph = 7.0 + ((2.5 - voltage) / 0.18) + PH_OFFSET;
+//   ph = constrain(ph, 0.0, 14.0);
+//   Serial.printf("[SENSOR] pH RAW: %d | Voltage: %.3fV → pH: %.2f\n", raw, voltage, ph);
+//   return ph;
+// }
 
-unsigned long tLastKirim   = 0;
-unsigned long tLastHeart   = 0;
-unsigned long tPumpStart   = 0;
-unsigned long tLastBtn     = 0;
-unsigned long tLastWiFi    = 0;
-unsigned long tLastMqtt    = 0;
-bool          btnLast      = HIGH;
+// void nyalakanPompa() {
+//   if (!pumpStatus) {
+//     digitalWrite(PIN_RELAY, LOW);
+//     pumpStatus = true;
+//     Serial.println("[POMPA] >>> MENYALA <<<");
+//   }
+// }
 
-// ════════════════════════════════════════════════════════════
-// NVS — Simpan parameter
-// ════════════════════════════════════════════════════════════
-void simpanParameter() {
-  prefs.begin("mapia", false);
-  prefs.putFloat("minkel", pMinKel);
-  prefs.putFloat("maxkel", pMaxKel);
-  prefs.end();
-  Serial.printf("[NVS] Parameter disimpan: %.1f – %.1f%%\n", pMinKel, pMaxKel);
-}
+// void matikanPompa() {
+//   if (pumpStatus) {
+//     digitalWrite(PIN_RELAY, HIGH);
+//     pumpStatus = false;
+//     Serial.println("[POMPA] >>> MATI <<<");
+//   }
+// }
 
-void muatParameter() {
-  prefs.begin("mapia", true);
-  pMinKel = prefs.getFloat("minkel", DEFAULT_MIN_KEL);
-  pMaxKel = prefs.getFloat("maxkel", DEFAULT_MAX_KEL);
-  prefs.end();
-  Serial.printf("[NVS] Parameter dimuat: %.1f – %.1f%%\n", pMinKel, pMaxKel);
-}
+// void prosesOtomatis(float kelembapan, float ph) {
+//   if (!modeAuto) return;
+//   bool phAman = (ph >= minPh && ph <= maxPh);
+//   if (kelembapan < minKelembapan && phAman) {
+//     Serial.printf("[AUTO] Kelembapan %.1f%% < min %.1f%% — Pompa ON\n", kelembapan, minKelembapan);
+//     nyalakanPompa();
+//   } else if (kelembapan >= maxKelembapan) {
+//     Serial.printf("[AUTO] Kelembapan %.1f%% >= max %.1f%% — Pompa OFF\n", kelembapan, maxKelembapan);
+//     matikanPompa();
+//   } else if (!phAman) {
+//     Serial.printf("[AUTO] pH %.2f di luar rentang [%.1f–%.1f] — Pompa OFF\n", ph, minPh, maxPh);
+//     matikanPompa();
+//   }
+// }
 
-// ════════════════════════════════════════════════════════════
-// SENSOR KELEMBAPAN
-// ════════════════════════════════════════════════════════════
-float bacaKelembapan() {
-  long total = 0;
-  for (int i = 0; i < 10; i++) {
-    total += analogRead(PIN_MOISTURE);
-    delay(10);
-  }
-  int raw = total / 10;
-  float pct = (float)(raw - MOISTURE_DRY) / (MOISTURE_WET - MOISTURE_DRY) * 100.0;
-  pct = constrain(pct, 0.0, 100.0);
-  return pct;
-}
+// void kirimData(float kelembapan, float ph) {
+//   StaticJsonDocument<200> doc;
+//   doc["kelembapan"] = round(kelembapan * 10) / 10.0;
+//   doc["ph_tanah"]   = round(ph * 100) / 100.0;
+//   doc["id_sensor"]  = SENSOR_DB_ID;
+//   doc["pump"]       = pumpStatus ? "ON" : "OFF";
+//   doc["mode"]       = modeAuto ? "otomatis" : "manual";
+//   char payload[200];
+//   serializeJson(doc, payload);
+//   bool berhasil = mqttClient.publish(topicPublish.c_str(), payload, false);
+//   if (berhasil) {
+//     Serial.printf("[MQTT] Terkirim → %s\n", payload);
+//   } else {
+//     Serial.println("[MQTT] GAGAL kirim data!");
+//   }
+// }
 
-String getKondisi(float k) {
-  if (k < pMinKel) return "KERING";
-  if (k > pMaxKel) return "BASAH";
-  return "LEMBAP";
-}
+// void onMqttMessage(char* topic, byte* payload, unsigned int length) {
+//   String topicStr(topic);
+//   String pesan = "";
+//   for (unsigned int i = 0; i < length; i++) pesan += (char)payload[i];
+//   Serial.printf("[MQTT] Terima | Topic: %s | Pesan: %s\n", topic, pesan.c_str());
 
-// ════════════════════════════════════════════════════════════
-// RELAY / POMPA
-// ════════════════════════════════════════════════════════════
-void nyalakanPompa() {
-  if (pumpOn) return;
-  digitalWrite(PIN_RELAY, LOW);
-  pumpOn = true;
-  tPumpStart = millis();
-  Serial.println("[POMPA] >>> ON <<<");
-  for (int i = 0; i < 2; i++) {
-    digitalWrite(PIN_LED_STATUS, LOW);
-    delay(80);
-    digitalWrite(PIN_LED_STATUS, HIGH);
-    delay(80);
-  }
-}
+//   if (topicStr == topicPump) {
+//     if (!modeAuto) {
+//       if (pesan == "ON")  nyalakanPompa();
+//       if (pesan == "OFF") matikanPompa();
+//     } else {
+//       Serial.println("[MQTT] Perintah pompa diabaikan — mode otomatis aktif");
+//     }
+//   }
 
-void matikanPompa() {
-  if (!pumpOn) return;
-  digitalWrite(PIN_RELAY, HIGH);
-  pumpOn = false;
-  Serial.printf("[POMPA] >>> OFF <<< (nyala %lu detik)\n", (millis() - tPumpStart) / 1000);
-}
+//   if (topicStr == topicMode) {
+//     if (pesan == "Otomatis") {
+//       modeAuto = true;
+//       matikanPompa();
+//       Serial.println("[MODE] Beralih ke OTOMATIS");
+//     } else if (pesan == "Manual") {
+//       modeAuto = false;
+//       matikanPompa();
+//       Serial.println("[MODE] Beralih ke MANUAL");
+//     }
+//   }
 
-void cekBatasPompa() {
-  if (pumpOn && (millis() - tPumpStart >= POMPA_MAX_DURASI)) {
-    Serial.println("[SAFETY] Pompa > 5 menit! Dimatikan paksa.");
-    matikanPompa();
-    mqttClient.publish(tAlert.c_str(), "{\"jenis\":\"SAFETY\",\"pesan\":\"Pompa dimatikan paksa >5 menit\"}", false);
-  }
-}
+//   String topicParameter = "mapia/sensor/" + macAddress + "/parameter";
+//   if (topicStr == topicParameter) {
+//     StaticJsonDocument<200> doc;
+//     DeserializationError err = deserializeJson(doc, pesan);
+//     if (!err) {
+//       if (doc.containsKey("min_kel"))  minKelembapan = doc["min_kel"].as<float>();
+//       if (doc.containsKey("max_kel"))  maxKelembapan = doc["max_kel"].as<float>();
+//       if (doc.containsKey("min_ph"))   minPh         = doc["min_ph"].as<float>();
+//       if (doc.containsKey("max_ph"))   maxPh         = doc["max_ph"].as<float>();
+//       Serial.printf("[PARAM] Update: kel [%.1f–%.1f%%] pH [%.1f–%.1f]\n",
+//                     minKelembapan, maxKelembapan, minPh, maxPh);
+//     }
+//   }
+// }
 
-// ════════════════════════════════════════════════════════════
-// TOMBOL FISIK
-// ════════════════════════════════════════════════════════════
-void cekTombol() {
-  bool btnNow = digitalRead(PIN_BTN_MODE);
-  if (btnLast == HIGH && btnNow == LOW) {
-    if (millis() - tLastBtn > DEBOUNCE_MS) {
-      tLastBtn = millis();
-      modeAuto = !modeAuto;
-      matikanPompa();
+// // ─── JALUR KONEKSI ───
+// void koneksiWifi() {
+//   WiFi.disconnect(true);
+//   delay(500);
+//   WiFi.mode(WIFI_STA);
+//   delay(500);
+//   Serial.printf("\n[WIFI] Menghubungkan ke: %s\n", WIFI_SSID);
+//   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+//   unsigned long start = millis();
+//   while (WiFi.status() != WL_CONNECTED) {
+//     delay(500);
+//     Serial.print(".");
+//     if (millis() - start > 30000) {
+//       Serial.println("\n[WIFI] TIMEOUT — restart...");
+//       delay(3000);
+//       ESP.restart();
+//     }
+//   }
+//   Serial.printf("\n[WIFI] Terhubung! IP: %s | RSSI: %d dBm\n",
+//                 WiFi.localIP().toString().c_str(), WiFi.RSSI());
+// }
 
-      Serial.println("════════════════════════════════");
-      Serial.printf("  MODE → %s\n", modeAuto ? "OTOMATIS 🤖" : "MANUAL 👋");
-      Serial.println("════════════════════════════════");
-
-      mqttClient.publish(tMode.c_str(), modeAuto ? "Otomatis" : "Manual", false);
-    }
-  }
-  btnLast = btnNow;
-}
-
-// ════════════════════════════════════════════════════════════
-// LOGIKA OTOMATIS
-// ════════════════════════════════════════════════════════════
-void prosesOtomatis(float kel) {
-  if (!modeAuto) return;
-  if (kel < pMinKel) {
-    Serial.printf("[AUTO] Kering %.1f%% < min %.1f%% → Pompa ON\n", kel, pMinKel);
-    nyalakanPompa();
-  } else if (kel >= pMaxKel) {
-    Serial.printf("[AUTO] Cukup %.1f%% >= max %.1f%% → Pompa OFF\n", kel, pMaxKel);
-    matikanPompa();
-  }
-}
-
-// ════════════════════════════════════════════════════════════
-// MQTT PUBLISH
-// ════════════════════════════════════════════════════════════
-void kirimData(float kel) {
-  StaticJsonDocument<200> doc;
-  doc["kelembapan"] = round(kel * 10) / 10.0;
-  doc["id_sensor"]  = SENSOR_DB_ID;
-  doc["pump"]       = pumpOn ? "ON" : "OFF";
-  doc["mode"]       = modeAuto ? "otomatis" : "manual";
-  doc["kondisi"]    = kondisi;
-  doc["uptime"]     = millis() / 1000;
-
-  char buf[200];
-  serializeJson(doc, buf);
-  bool ok = mqttClient.publish(tData.c_str(), buf, false);
-  Serial.printf("[MQTT] %s Kirim data: %s\n", ok ? "✓" : "✗", buf);
-}
-
-void kirimStatus() {
-  StaticJsonDocument<256> doc;
-  doc["online"]   = true;
-  doc["pump"]     = pumpOn ? "ON" : "OFF";
-  doc["mode"]     = modeAuto ? "otomatis" : "manual";
-  doc["kel"]      = round(lastKel * 10) / 10.0;
-  doc["kondisi"]  = kondisi;
-  doc["min_kel"]  = pMinKel;
-  doc["max_kel"]  = pMaxKel;
-  doc["rssi"]     = WiFi.RSSI();
-  doc["uptime"]   = millis() / 1000;
-
-  char buf[256];
-  serializeJson(doc, buf);
-  mqttClient.publish(tStatus.c_str(), buf, true);
-  Serial.printf("[MQTT] ✓ Status published\n");
-}
-
-void kirimHeartbeat() {
-  StaticJsonDocument<100> doc;
-  doc["online"] = true;
-  doc["uptime"] = millis() / 1000;
-  doc["rssi"]   = WiFi.RSSI();
-  doc["heap"]   = ESP.getFreeHeap();
-
-  char buf[100];
-  serializeJson(doc, buf);
-  mqttClient.publish(tHeart.c_str(), buf, false);
-  Serial.printf("[MQTT] ♥ Heartbeat — RSSI:%d dBm | Heap:%u\n", WiFi.RSSI(), ESP.getFreeHeap());
-}
-
-// ════════════════════════════════════════════════════════════
-// MQTT CALLBACK
-// ════════════════════════════════════════════════════════════
-void onMqttMessage(char* topic, byte* payload, unsigned int len) {
-  String t   = String(topic);
-  String msg = "";
-  for (unsigned int i = 0; i < len; i++) msg += (char)payload[i];
-  msg.trim();
-
-  Serial.printf("[MQTT] ← %s = %s\n", topic, msg.c_str());
-
-  // ── PUMP CONTROL ────────────────────────────────────────
-  if (t == tPump) {
-    if (!modeAuto) {
-      if      (msg == "ON")  { nyalakanPompa(); }
-      else if (msg == "OFF") { matikanPompa(); }
-    } else {
-      Serial.println("[POMPA] Ignored — Auto mode active");
-    }
-    return;
-  }
-
-  // ── MODE CONTROL ────────────────────────────────────────
-  if (t == tMode) {
-    bool prev = modeAuto;
-    if      (msg == "Otomatis" || msg == "AUTO")   modeAuto = true;
-    else if (msg == "Manual"   || msg == "MANUAL") modeAuto = false;
-    if (modeAuto != prev) {
-      matikanPompa();
-      Serial.printf("[MODE] Changed → %s\n", modeAuto ? "OTOMATIS" : "MANUAL");
-      kirimStatus();
-    }
-    return;
-  }
-
-  // ── PARAMETER UPDATE ────────────────────────────────────
-  if (t == tParam) {
-    StaticJsonDocument<128> doc;
-    DeserializationError err = deserializeJson(doc, msg);
-    if (!err) {
-      bool changed = false;
-      if (doc.containsKey("min_kel")) {
-        pMinKel = constrain(doc["min_kel"].as<float>(), 0, 99);
-        changed = true;
-      }
-      if (doc.containsKey("max_kel")) {
-        pMaxKel = constrain(doc["max_kel"].as<float>(), 1, 100);
-        changed = true;
-      }
-      if (pMinKel >= pMaxKel) {
-        pMinKel = DEFAULT_MIN_KEL;
-        pMaxKel = DEFAULT_MAX_KEL;
-      }
-      if (changed) {
-        simpanParameter();
-        Serial.printf("[PARAM] Updated → [%.1f – %.1f%%]\n", pMinKel, pMaxKel);
-        kirimStatus();
-      }
-    }
-    return;
-  }
-
-  // ── RESTART ────────────────────────────────────────────
-  String tReset = "mapia/sensor/" + macAddr + "/reset";
-  if (t == tReset && msg == "RESTART") {
-    Serial.println("[CMD] Remote restart requested...");
-    delay(500);
-    ESP.restart();
-  }
-}
-
-// ════════════════════════════════════════════════════════════
-// WIFI KONEKSI (dengan retry logic)
-// ════════════════════════════════════════════════════════════
-bool koneksiWifi() {
-  if (WiFi.status() == WL_CONNECTED) {
-    return true;
-  }
-
-  unsigned long now = millis();
-  if (now - tLastWiFi < WIFI_TIMEOUT) {
-    return false;
-  }
-  tLastWiFi = now;
-
-  WiFi.disconnect(true);
-  delay(300);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-  Serial.printf("[WIFI] Connecting to '%s'...", WIFI_SSID);
+// void koneksiMqtt() {
+//   String clientId = "mapia-esp32-" + macAddress;
+//   clientId.replace(":", "");
+//   Serial.printf("[MQTT] Menghubungkan ke %s:%d ...\n", MQTT_BROKER, MQTT_PORT);
+//   int percobaan = 0;
   
-  unsigned long startTime = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - startTime < WIFI_TIMEOUT) {
-    delay(500);
-    Serial.print(".");
-    digitalWrite(PIN_LED_STATUS, !digitalRead(PIN_LED_STATUS));
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.printf("\n[WIFI] ✓ Connected! IP: %s\n", WiFi.localIP().toString().c_str());
-    return true;
-  } else {
-    Serial.println("\n[WIFI] ✗ Timeout");
-    return false;
-  }
-}
-
-// ════════════════════════════════════════════════════════════
-// MQTT KONEKSI (dengan retry logic)
-// ════════════════════════════════════════════════════════════
-bool koneksiMqtt() {
-  if (mqttClient.connected()) {
-    return true;
-  }
-
-  unsigned long now = millis();
-  if (now - tLastMqtt < MQTT_TIMEOUT) {
-    return false;
-  }
-  tLastMqtt = now;
-
-  String clientId = "mapia-esp32-" + macAddr;
-  String willPayload = "{\"online\":false,\"pump\":\"OFF\"}";
-
-  Serial.printf("[MQTT] Connecting to %s:%d...\n", MQTT_BROKER, MQTT_PORT);
-
-  if (mqttClient.connect(
-      clientId.c_str(),
-      MQTT_USER, MQTT_PASS,
-      tStatus.c_str(), 1, true, willPayload.c_str()
-  )) {
-    Serial.println("╔══════════════════════════════════════╗");
-    Serial.println("║  ✅  MQTT CONNECTED!                 ║");
-    Serial.printf("║  Broker: %-30s║\n", MQTT_BROKER);
-    Serial.println("╚══════════════════════════════════════╝\n");
-    digitalWrite(PIN_LED_STATUS, HIGH);
-
-    mqttClient.subscribe(tPump.c_str());
-    mqttClient.subscribe(tMode.c_str());
-    mqttClient.subscribe(tParam.c_str());
-    mqttClient.subscribe(("mapia/sensor/" + macAddr + "/reset").c_str());
-
-    kirimStatus();
-    return true;
-  } else {
-    Serial.printf("[MQTT] ✗ Failed (state=%d)\n", mqttClient.state());
-    return false;
-  }
-}
-
-// ════════════════════════════════════════════════════════════
-// SETUP
-// ════════════════════════════════════════════════════════════
-void setup() {
-  Serial.begin(115200);
-  delay(1000);
-
-  pinMode(PIN_RELAY,      OUTPUT);
-  pinMode(PIN_LED_STATUS, OUTPUT);
-  pinMode(PIN_BTN_MODE,   INPUT_PULLUP);
-  digitalWrite(PIN_RELAY,      HIGH);
-  digitalWrite(PIN_LED_STATUS, LOW);
-
-  analogReadResolution(12);
-  analogSetAttenuation(ADC_11db);
-
-  muatParameter();
-  koneksiWifi();
-
-  macAddr = WiFi.macAddress();
-  macAddr.replace(":", "");
+//   while (!mqttClient.connected() && percobaan < 5) {
+//     if (mqttClient.connect(clientId.c_str(), MQTT_USER, MQTT_PASS)) {
+//         Serial.println("[MQTT] Terhubung ke EMQX Cloud!"); 
+//         mqttClient.subscribe(topicPump.c_str());
+//         mqttClient.subscribe(topicMode.c_str());
+//     } else {
+//         Serial.printf("[MQTT] Gagal (state=%d), coba lagi...\n", mqttClient.state());
+//         delay(3000);
+//         percobaan++;
+//     }
+//   }
   
-  tData   = "mapia/sensor/"   + macAddr + "/data";
-  tPump   = "mapia/actuator/" + macAddr + "/pump";
-  tMode   = "mapia/sensor/"   + macAddr + "/mode";
-  tParam  = "mapia/sensor/"   + macAddr + "/parameter";
-  tStatus = "mapia/sensor/"   + macAddr + "/status";
-  tAlert  = "mapia/sensor/"   + macAddr + "/alert";
-  tHeart  = "mapia/sensor/"   + macAddr + "/heartbeat";
+//   if (!mqttClient.connected()) {
+//     Serial.println("[MQTT] Tidak bisa terhubung — restart...");
+//     delay(5000);
+//     ESP.restart();
+//   }
+// }
 
-  wifiClient.setInsecure();
-  mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
-  mqttClient.setCallback(onMqttMessage);
-  mqttClient.setKeepAlive(60);
-  mqttClient.setBufferSize(512);
+// // ─── SETUP ───
+// void setup() {
+//   Serial.begin(115200);
+//   delay(1000);
+  
 
-  koneksiMqtt();
-}
+//   // Konfigurasi Hardware Pin
+//   pinMode(PIN_RELAY, OUTPUT);
+//   digitalWrite(PIN_RELAY, HIGH); // Default Mati (Aktif LOW)
+//   pinMode(PIN_MOISTURE, INPUT);
+//   pinMode(PIN_PH, INPUT);
 
-// ════════════════════════════════════════════════════════════
-// LOOP
-// ════════════════════════════════════════════════════════════
-void loop() {
-  // ── Maintain WiFi & MQTT ────────────────────────────────
-  if (!koneksiWifi()) {
-    digitalWrite(PIN_LED_STATUS, LOW);
-    delay(100);
-    return;
-  }
+//   // Hubungkan ke Wifi & Ambil Mac Address untuk generate topik unik
+//   koneksiWifi();
+//   macAddress = WiFi.macAddress();
+//   Serial.println(WiFi.macAddress());
 
-  if (!koneksiMqtt()) {
-    digitalWrite(PIN_LED_STATUS, LOW);
-    delay(100);
-    return;
-  }
+//   topicPublish = "mapia/sensor/" + macAddress + "/data";
+//   topicPump    = "mapia/actuator/" + macAddress + "/pump";
+//   topicMode    = "mapia/sensor/" + macAddress + "/mode";
 
-  mqttClient.loop();
-  cekTombol();
-  cekBatasPompa();
+//   Serial.printf("[INFO] Topic: %s\n", topicPublish.c_str());
 
-  unsigned long now = millis();
+//   // Pasang Sertifikat Root DigiCert ke SSL Client
+//   wifiClient.setCACert(ROOT_CA);
 
-  // ── Publish sensor data ─────────────────────────────────
-  if (now - tLastKirim >= INTERVAL_KIRIM) {
-    tLastKirim = now;
-    lastKel = bacaKelembapan();
-    kondisi = getKondisi(lastKel);
+//   mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
+//   mqttClient.setCallback(onMqttMessage);
+//   mqttClient.setKeepAlive(60);
+//   mqttClient.setBufferSize(512);
 
-    prosesOtomatis(lastKel);
-    kirimData(lastKel);
-  }
+//   koneksiMqtt();
 
-  // ── Publish heartbeat ───────────────────────────────────
-  if (now - tLastHeart >= INTERVAL_HEARTBEAT) {
-    tLastHeart = now;
-    kirimHeartbeat();
-  }
+//   Serial.println("\n[READY] Sistem siap beroperasi!\n");
+// }
 
-  delay(10);
-}
+// // ─── LOOP ───
+// void loop() {
+//   if (WiFi.status() != WL_CONNECTED) {
+//     Serial.println("[WIFI] Putus — reconnect...");
+//     koneksiWifi();
+//   }
+//   if (!mqttClient.connected()) {
+//     Serial.println("[MQTT] Putus — reconnect...");
+//     koneksiMqtt();
+//   }
+//   mqttClient.loop();
+
+//   unsigned long sekarang = millis();
+//   if (sekarang - lastKirim >= INTERVAL_KIRIM) {
+//     lastKirim = sekarang;
+//     float kelembapan = bacaKelembapan();
+//     float ph         = bacaPh();
+//     Serial.printf("\n[DATA] Kelembapan: %.1f%% | pH: %.2f | Pompa: %s | Mode: %s\n",
+//                   kelembapan, ph,
+//                   pumpStatus ? "ON" : "OFF",
+//                   modeAuto ? "Otomatis" : "Manual");
+//     prosesOtomatis(kelembapan, ph);
+//     kirimData(kelembapan, ph);
+//   }
+// }

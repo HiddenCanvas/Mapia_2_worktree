@@ -43,14 +43,17 @@ class MqttService
             // PERBAIKAN DI SINI:
             // 1. Tambahkan username & password agar bisa login ke EMQX
             // 2. Ubah setVerifyPeer menjadi setTlsVerifyPeer
-            $connectionSettings = (new ConnectionSettings())
-                ->setUsername($this->username)
-                ->setPassword($this->password)
-                ->setUseTls(true)
-                ->setTlsVerifyPeer(false)
-                ->setTlsSelfSignedAllowed(true)
-                ->setKeepAliveInterval(env('MQTT_KEEP_ALIVE', 60));
+// app/Services/MqttService.php
 
+$connectionSettings = (new ConnectionSettings())
+    ->setUsername($this->username)
+    ->setPassword($this->password)
+    ->setUseTls(true)
+    ->setTlsCertificateAuthorityFile(base_path('emqxsl-ca.crt')) // Mengarah ke file crt di root proyek
+    ->setTlsVerifyPeer(true) // Set true karena kita menggunakan CA certificate yang valid
+    ->setTlsSelfSignedAllowed(false) // Nonaktifkan self-signed karena ini dari CA resmi DigiCert
+    ->setKeepAliveInterval(env('MQTT_KEEP_ALIVE', 60));
+    
             $this->mqtt->connect($connectionSettings, true);
             Log::info('[MQTT] ✓ Connected to broker: ' . $this->broker . ':' . $this->port);
             
@@ -64,11 +67,20 @@ class MqttService
     /**
      * Publish ke MQTT Topic
      */
+/**
+     * Publish ke MQTT Topic
+     */
     public function publish(string $topic, string $message, int $qos = 1, bool $retain = false): bool
     {
         try {
             if (!$this->mqtt) {
                 $this->connect();
+            }
+
+            // Tambahkan validasi ini agar aman jika broker sedang down
+            if (!$this->mqtt) {
+                Log::error('[MQTT] ✗ Publish failed: Client instance is null.');
+                return false;
             }
 
             $this->mqtt->publish($topic, $message, $qos, $retain);
@@ -80,7 +92,6 @@ class MqttService
             return false;
         }
     }
-
     /**
      * Subscribe ke MQTT Topic dengan callback
      */

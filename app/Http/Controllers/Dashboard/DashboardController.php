@@ -9,48 +9,51 @@ use Illuminate\Support\Facades\Auth;
 
 class DashboardController extends Controller
 {
-    public function index()
-    {
-        $userId = Auth::id();
+public function index()
+{
+    $userId = Auth::id();
 
-        // Ambil semua sensor milik user beserta data terbaru
-        $sensors = Sensor::where('id_user', $userId)
-            ->with(['riwayat_sensors' => function ($q) {
-                $q->latest('created_at')->limit(1);
-            }, 'parameterPenyiraman'])
-            ->get();
+    $sensors = Sensor::where('id_user', $userId)
+        ->with([
+            'historyKelembapans' => fn($q) => $q->latest()->limit(1),
+            'riwayat_sensors'    => fn($q) => $q->latest('created_at')->limit(1),
+            'parameterPenyiraman',
+            'kontrolSiram',
+        ])
+        ->get();
 
-        // Build sensorData: gabung sensor + latest reading
-        $sensorData = $sensors->map(function ($sensor) {
-            $latest = $sensor->riwayat_sensors->first();
-            return (object) [
-                'id_sensor'    => $sensor->id_sensor,
-                'nama_sensor'  => $sensor->nama_sensor,
-                'lokasi'       => $sensor->lokasi,
-                'status'       => $sensor->status,
-                'kelembapan'   => $latest->kelembapan ?? 0,
-                'ph_tanah'     => $latest->ph_tanah ?? 0,
-                'created_at'   => $latest->created_at ?? null,
-                'mode_auto'    => $sensor->parameterPenyiraman->mode_auto ?? false,
-            ];
-        });
+    $sensorData = $sensors->map(function ($sensor) {
+        $latestHistory = $sensor->historyKelembapans->first();
+        $latestRiwayat = $sensor->riwayat_sensors->first();
 
-        // Penyiraman sedang berlangsung (waktu_selesai null)
-        $penyiramanAktifIds = RiwayatPenyiraman::whereIn('id_sensor', $sensors->pluck('id_sensor'))
-            ->whereNull('waktu_selesai')
-            ->pluck('id_sensor')
-            ->toArray();
-
-        $stats = [
-            'total_sensor'      => $sensors->count(),
-            'sensor_online'     => $sensors->where('status', true)->count(),
-            'tanah_kering'      => $sensorData->filter(fn($s) => $s->kelembapan < 30)->count(),
-            'penyiraman_aktif'  => count($penyiramanAktifIds),
+        return (object) [
+            'id_sensor'    => $sensor->id_sensor,
+            'nama_sensor'  => $sensor->nama_sensor,
+            'lokasi'       => $sensor->lokasi,
+            'status'       => $sensor->status,
+            'kelembapan'   => $latestHistory?->kelembapan ?? $latestRiwayat?->kelembapan ?? 0,
+            'ph_tanah'     => $latestRiwayat?->ph_tanah ?? 0,
+            'kondisi'      => $latestHistory?->kondisi ?? 'UNKNOWN',
+            'created_at'   => $latestHistory?->created_at ?? $latestRiwayat?->created_at,
+            'mode_auto'    => $sensor->kontrolSiram?->mode_auto ?? true,
+            'status_pompa' => $sensor->kontrolSiram?->status_pompa ?? false,
         ];
+    });
 
-        // Hitung notifikasi belum dibaca (kolom dibaca belum ada di schema, default 0)
-        $unreadCount = 0;
+    $penyiramanAktifIds = \App\Models\RiwayatPenyiraman::whereIn('id_sensor', $sensors->pluck('id_sensor'))
+        ->whereNull('waktu_selesai')
+        ->pluck('id_sensor')
+        ->toArray();
 
-        return view('dashboard.index', compact('sensorData', 'stats', 'unreadCount'));
-    }
+    $stats = [
+        'total_sensor'     => $sensors->count(),
+        'sensor_online'    => $sensors->where('status', true)->count(),
+        'tanah_kering'     => $sensorData->filter(fn($s) => $s->kelembapan < 30)->count(),
+        'penyiraman_aktif' => count($penyiramanAktifIds),
+    ];
+
+    $unreadCount = 0;
+
+    return view('dashboard.index', compact('sensorData', 'stats', 'unreadCount'));
+}
 }
