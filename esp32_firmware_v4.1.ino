@@ -39,8 +39,8 @@
 
 // const int   SENSOR_DB_ID  = 1;
 
-// const int PIN_MOISTURE    = 34;
-// const int PIN_PH          = 35;
+// const int PIN_MOISTURE    = 35;
+// const int PIN_PH          = 34;
 // const int PIN_RELAY       = 26;
 
 // const unsigned long INTERVAL_KIRIM = 30000;
@@ -65,6 +65,9 @@
 // float   minPh         = 5.5;
 // float   maxPh         = 7.0;
 
+// const bool DUMMY_PH =true;
+// const float DUMMY_PH_VALUE=6.5;
+
 // unsigned long lastKirim = 0;
 
 // // ─── FUNGSI SENSOR & AKTUATOR ───
@@ -82,6 +85,11 @@
 // }
 
 // float bacaPh() {
+//   if (DUMMY_PH) {
+//     Serial.println("[SENSOR] pH: DUMMY MODE → 6.50");
+//     return DUMMY_PH_VALUE;
+//   }
+//   // Kode asli tetap ada, aktif saat DUMMY_PH = false
 //   long total = 0;
 //   for (int i = 0; i < 10; i++) {
 //     total += analogRead(PIN_PH);
@@ -158,18 +166,19 @@
 //     }
 //   }
 
-//   if (topicStr == topicMode) {
-//     if (pesan == "Otomatis") {
-//       modeAuto = true;
-//       matikanPompa();
-//       Serial.println("[MODE] Beralih ke OTOMATIS");
-//     } else if (pesan == "Manual") {
-//       modeAuto = false;
-//       matikanPompa();
-//       Serial.println("[MODE] Beralih ke MANUAL");
+// // Di onMqttMessage, bagian topicMode
+// if (topicStr == topicMode) {
+//     pesan.toLowerCase(); // ← tambahkan ini
+//     if (pesan == "otomatis") {
+//         modeAuto = true;
+//         matikanPompa();
+//         Serial.println("[MODE] Beralih ke OTOMATIS");
+//     } else if (pesan == "manual") {
+//         modeAuto = false;
+//         matikanPompa();
+//         Serial.println("[MODE] Beralih ke MANUAL");
 //     }
-//   }
-
+// }
 //   String topicParameter = "mapia/sensor/" + macAddress + "/parameter";
 //   if (topicStr == topicParameter) {
 //     StaticJsonDocument<200> doc;
@@ -246,8 +255,12 @@
 
 //   // Hubungkan ke Wifi & Ambil Mac Address untuk generate topik unik
 //   koneksiWifi();
-//   macAddress = WiFi.macAddress();
-//   Serial.println(WiFi.macAddress());
+
+
+// macAddress = WiFi.macAddress();
+// macAddress.replace(":", "");
+// macAddress.toUpperCase(); 
+//  Serial.println(WiFi.macAddress());
 
 //   topicPublish = "mapia/sensor/" + macAddress + "/data";
 //   topicPump    = "mapia/actuator/" + macAddress + "/pump";

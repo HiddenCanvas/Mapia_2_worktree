@@ -11,6 +11,7 @@ use App\Models\KontrolSiram;
 use App\Models\HistoryKelembapan;
 use App\Services\MqttService;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Auth;
 
 class SensorController extends Controller
 {
@@ -101,7 +102,6 @@ class SensorController extends Controller
                 ], 404);
             }
 
-            // Get latest reading
             $latestData = HistoryKelembapan::where('id_sensor', $id)
                 ->latest()
                 ->first();
@@ -123,9 +123,148 @@ class SensorController extends Controller
     }
 
     /**
+     * ✅ GET LIVE DATA — dipanggil frontend via polling setiap 5 detik
+     * GET /api/v1/sensors/{id}/live
+     * Mengembalikan: kelembapan, ph_tanah, kondisi, pump, mode, updated_at
+     */
+    public function getLiveData($id)
+    {
+        try {
+            $sensor = Sensor::with(['parameterPenyiraman', 'kontrolSiram'])->find($id);
+
+            if (!$sensor) {
+                return response()->json(['status' => 'error', 'message' => 'Sensor not found'], 404);
+            }
+
+            // Data terbaru dari history kelembapan (dikirim ESP32 via MQTT)
+            $latest = HistoryKelembapan::where('id_sensor', $id)->latest()->first();
+
+            $kelembapan = $latest->kelembapan ?? 0;
+            $phTanah    = $latest->ph_tanah ?? 7.0;
+            $kondisi    = $latest->kondisi ?? 'UNKNOWN';
+            $updatedAt  = $latest ? $latest->created_at->diffForHumans() : 'Belum ada data';
+
+            $kontrolSiram = $sensor->kontrolSiram;
+
+            return response()->json([
+                'status' => 'success',
+                'data'   => [
+                    'id_sensor'    => $sensor->id_sensor,
+                    'nama_sensor'  => $sensor->nama_sensor,
+                    'online'       => $sensor->status,
+                    'kelembapan'   => round($kelembapan, 1),
+                    'ph_tanah'     => round($phTanah, 2),
+                    'kondisi'      => $kondisi,
+                    'pump'         => $kontrolSiram ? ($kontrolSiram->status_pompa ? 'ON' : 'OFF') : 'OFF',
+                    'mode'         => $kontrolSiram ? ($kontrolSiram->mode_auto ? 'otomatis' : 'manual') : 'manual',
+                    'mode_auto'    => $kontrolSiram ? (bool)$kontrolSiram->mode_auto : false,
+                    'pump_on'      => $kontrolSiram ? (bool)$kontrolSiram->status_pompa : false,
+                    'updated_at'   => $updatedAt,
+                    'updated_raw'  => $latest ? $latest->created_at->toIso8601String() : null,
+                    'min_kel'      => $sensor->parameterPenyiraman->min_kelembapan ?? 40,
+                    'max_kel'      => $sensor->parameterPenyiraman->max_kelembapan ?? 70,
+                    'min_ph'       => $sensor->parameterPenyiraman->min_ph ?? 6,
+                    'max_ph'       => $sensor->parameterPenyiraman->max_ph ?? 7,
+                ]
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * ✅ GET LIVE DATA semua sensor milik user yang login
+     * GET /api/v1/sensors/live/all
+     */
+    public function getAllLiveData(Request $request)
+    {
+        try {
+            // Ambil id_user dari query param (karena ini mungkin dipanggil tanpa session auth)
+            $userId = $request->query('user_id');
+
+            $query = Sensor::with(['parameterPenyiraman', 'kontrolSiram']);
+            if ($userId) {
+                $query->where('id_user', $userId);
+            }
+
+            $sensors = $query->get();
+
+            $result = $sensors->map(function ($sensor) {
+                $latest = HistoryKelembapan::where('id_sensor', $sensor->id_sensor)->latest()->first();
+                $kontrolSiram = $sensor->kontrolSiram;
+
+                return [
+                    'id_sensor'   => $sensor->id_sensor,
+                    'nama_sensor' => $sensor->nama_sensor,
+                    'lokasi'      => $sensor->lokasi,
+                    'online'      => $sensor->status,
+                    'kelembapan'  => $latest ? round($latest->kelembapan, 1) : 0,
+                    'ph_tanah'    => $latest ? round($latest->ph_tanah ?? 7.0, 2) : 7.0,
+                    'kondisi'     => $latest->kondisi ?? 'UNKNOWN',
+                    'pump'        => $kontrolSiram ? ($kontrolSiram->status_pompa ? 'ON' : 'OFF') : 'OFF',
+                    'mode'        => $kontrolSiram ? ($kontrolSiram->mode_auto ? 'otomatis' : 'manual') : 'manual',
+                    'mode_auto'   => $kontrolSiram ? (bool)$kontrolSiram->mode_auto : false,
+                    'pump_on'     => $kontrolSiram ? (bool)$kontrolSiram->status_pompa : false,
+                    'updated_at'  => $latest ? $latest->created_at->diffForHumans() : 'Belum ada data',
+                ];
+            });
+
+            return response()->json([
+                'status' => 'success',
+                'data'   => $result
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * ✅ GET HISTORY KELEMBAPAN untuk chart
+     * GET /api/v1/sensors/{id}/history?limit=50
+     */
+    public function getHistory(Request $request, $id)
+    {
+        try {
+            $limit = min((int)$request->query('limit', 30), 200);
+
+            $history = HistoryKelembapan::where('id_sensor', $id)
+                ->latest()
+                ->limit($limit)
+                ->get()
+                ->reverse()
+                ->values()
+                ->map(fn($h) => [
+                    'waktu'      => $h->created_at->format('H:i'),
+                    'tanggal'    => $h->created_at->format('d/m H:i'),
+                    'kelembapan' => round($h->kelembapan, 1),
+                    'ph_tanah'   => round($h->ph_tanah ?? 7.0, 2),
+                    'kondisi'    => $h->kondisi ?? 'UNKNOWN',
+                ]);
+
+            return response()->json([
+                'status' => 'success',
+                'data'   => $history
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * ✅ Update parameter penyiraman (min/max kelembapan)
      * PATCH /api/v1/sensors/{id}/parameter
-     * Body: {"min_kelembapan": 40, "max_kelembapan": 70}
      */
     public function updateParameter(Request $request, $sensorId)
     {
@@ -135,7 +274,6 @@ class SensorController extends Controller
                 'max_kelembapan' => 'required|numeric|min:1|max:100',
             ]);
 
-            // Validasi: min < max
             if ($validated['min_kelembapan'] >= $validated['max_kelembapan']) {
                 return response()->json([
                     'status'  => 'error',
@@ -143,16 +281,12 @@ class SensorController extends Controller
                 ], 422);
             }
 
-            // Update di database
             $param = ParameterPenyiraman::updateOrCreate(
                 ['id_sensor' => $sensorId],
                 $validated
             );
 
-            // Publish ke MQTT (device akan menerima update ini)
             $this->publishParameterUpdate($sensorId, $validated);
-
-            Log::info('[API] Parameter updated for sensor ' . $sensorId . ': ' . json_encode($validated));
 
             return response()->json([
                 'status'  => 'success',
@@ -171,7 +305,6 @@ class SensorController extends Controller
     /**
      * ✅ Update mode (Otomatis / Manual)
      * PATCH /api/v1/sensors/{id}/mode
-     * Body: {"mode": "otomatis"} or {"mode": "manual"}
      */
     public function updateMode(Request $request, $sensorId)
     {
@@ -182,19 +315,14 @@ class SensorController extends Controller
 
             $sensor = Sensor::find($sensorId);
             if (!$sensor) {
-                return response()->json([
-                    'status'  => 'error',
-                    'message' => 'Sensor not found'
-                ], 404);
+                return response()->json(['status' => 'error', 'message' => 'Sensor not found'], 404);
             }
 
-            // Update mode
             $kontrolSiram = KontrolSiram::updateOrCreate(
                 ['id_sensor' => $sensorId],
                 ['mode_auto' => $validated['mode'] === 'otomatis']
             );
 
-            // Publish ke MQTT
             $topic = 'mapia/sensor/' . $sensor->mac_address . '/mode';
             $message = ($validated['mode'] === 'otomatis') ? 'Otomatis' : 'Manual';
             $this->mqttService->publish($topic, $message);
@@ -218,7 +346,6 @@ class SensorController extends Controller
     /**
      * ✅ Control pump (ON / OFF) - hanya di mode manual
      * POST /api/v1/sensors/{id}/pump
-     * Body: {"action": "ON"} or {"action": "OFF"}
      */
     public function controlPump(Request $request, $sensorId)
     {
@@ -229,37 +356,33 @@ class SensorController extends Controller
 
             $sensor = Sensor::find($sensorId);
             if (!$sensor) {
-                return response()->json([
-                    'status'  => 'error',
-                    'message' => 'Sensor not found'
-                ], 404);
+                return response()->json(['status' => 'error', 'message' => 'Sensor not found'], 404);
             }
 
-            // Check if mode is manual
             $kontrolSiram = KontrolSiram::where('id_sensor', $sensorId)->first();
             if ($kontrolSiram && $kontrolSiram->mode_auto) {
                 return response()->json([
                     'status'  => 'error',
-                    'message' => 'Cannot control pump in automatic mode'
+                    'message' => 'Tidak bisa kontrol pompa saat mode otomatis aktif'
                 ], 422);
             }
 
-            // Update pump status
             KontrolSiram::updateOrCreate(
                 ['id_sensor' => $sensorId],
                 ['status_pompa' => $validated['action'] === 'ON']
             );
 
-            // Publish ke MQTT
-            $topic = 'mapia/actuator/' . $sensor->mac_address . '/pump';
+            // Publish ke MQTT → ESP32 akan langsung terima dan nyalakan/matikan relay
+            $topic = 'mapia/actuator/' . str_replace(':', '', $sensor->mac_address) . '/pump';
             $this->mqttService->publish($topic, $validated['action']);
 
-            Log::info('[API] Pump ' . $validated['action'] . ' for sensor ' . $sensorId);
+            Log::info('[API] Pump ' . $validated['action'] . ' for sensor ' . $sensorId . ' via MQTT topic: ' . $topic);
 
             return response()->json([
                 'status'  => 'success',
-                'message' => 'Pump control sent successfully',
-                'action'  => $validated['action']
+                'message' => 'Perintah pompa terkirim ke perangkat',
+                'action'  => $validated['action'],
+                'pump_on' => $validated['action'] === 'ON',
             ], 200);
 
         } catch (\Exception $e) {
@@ -279,7 +402,7 @@ class SensorController extends Controller
             $sensor = Sensor::find($sensorId);
             if (!$sensor) return;
 
-            $topic = 'mapia/sensor/' . $sensor->mac_address . '/parameter';
+            $topic = 'mapia/sensor/' . str_replace(':', '', $sensor->mac_address) . '/parameter';
             $message = json_encode([
                 'min_kel' => $params['min_kelembapan'],
                 'max_kel' => $params['max_kelembapan'],
