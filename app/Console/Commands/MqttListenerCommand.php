@@ -7,6 +7,7 @@ use App\Services\MqttService;
 use App\Models\Sensor;
 use App\Models\HistoryKelembapan;
 use App\Models\KontrolSiram;
+use App\Models\ParameterPenyiraman;
 use App\Events\SensorDataUpdated;
 use Illuminate\Support\Facades\Log;
 
@@ -28,6 +29,7 @@ class MqttListenerCommand extends Command
 
         $this->info('✅ Terhubung ke broker MQTT');
 
+        // Subscribe wildcard — tangkap semua MAC
         $mqtt->subscribe('mapia/sensor/+/data', function (string $topic, string $message) {
             $this->prosesData($topic, $message);
         });
@@ -38,9 +40,9 @@ class MqttListenerCommand extends Command
 
         $mqtt->subscribe('mapia/sensor/+/heartbeat', function (string $topic, string $message) {
             $parts = explode('/', $topic);
-            $mac   = $parts[2] ?? '?';
+            $mac   = strtoupper(str_replace(':', '', $parts[2] ?? '?'));
             $data  = json_decode($message, true);
-            $this->line("💓 Heartbeat dari {$mac} | RSSI: " . ($data['rssi'] ?? '?') . " dBm | Heap: " . ($data['heap'] ?? '?'));
+            $this->line("💓 Heartbeat dari {$mac} | RSSI: " . ($data['rssi'] ?? '?') . " dBm");
         });
 
         $this->info('📡 Listening... (Ctrl+C untuk berhenti)');
@@ -62,25 +64,13 @@ class MqttListenerCommand extends Command
         return 0;
     }
 
-    /**
-     * Normalisasi MAC address:
-     * "B0:CB:D8:03:ED:40" → "B0CBD803ED40"
-     * "b0:cb:d8:03:ed:40" → "B0CBD803ED40"
-     * "B0CBD803ED40"      → "B0CBD803ED40" (sudah bersih)
-     */
-    private function normalizeMac(string $mac): string
-    {
-        return strtoupper(str_replace([':', '-', '.', ' '], '', $mac));
-    }
-
     private function prosesData(string $topic, string $message): void
     {
-        // Ekstrak MAC dari topic: mapia/sensor/B0CBD803ED40/data
-        $parts     = explode('/', $topic);
-        $macRaw    = $parts[2] ?? null;
-        $mac       = $this->normalizeMac($macRaw ?? '');
+        // Ekstrak MAC dari topic: mapia/sensor/B0:CB:D8:03:ED:40/data atau B0CBD803ED40
+        $parts = explode('/', $topic);
+        $mac   = strtoupper(str_replace(':', '', $parts[2] ?? ''));
 
-        $this->line("\n📨 Data masuk dari MAC: {$macRaw} (normalized: {$mac})");
+        $this->line("\n📨 Data masuk dari MAC: {$mac}");
         $this->line("   Payload: {$message}");
 
         $data = json_decode($message, true);
@@ -90,31 +80,33 @@ class MqttListenerCommand extends Command
             return;
         }
 
-        // Cari sensor berdasarkan MAC yang sudah dinormalisasi
+        // Cari sensor berdasarkan MAC (sudah tanpa titik dua, uppercase)
         $sensor = Sensor::where('mac_address', $mac)->first();
 
         if (!$sensor) {
             $this->warn("⚠️  Sensor dengan MAC [{$mac}] tidak ditemukan di database!");
-            $this->warn("    MAC di database yang tersedia:");
-            Sensor::select('id_sensor', 'nama_sensor', 'mac_address')->get()->each(function ($s) {
-                $this->warn("    → ID {$s->id_sensor} | {$s->nama_sensor} | {$s->mac_address}");
-            });
             return;
         }
 
-        $kelembapan = $data['kelembapan'] ?? null;
-        $phTanah    = $data['ph_tanah']   ?? 7.0;
-        $kondisi    = $data['kondisi']    ?? 'UNKNOWN';
-        $uptime     = $data['uptime']     ?? 0;
-        $pumpStr    = $data['pump']       ?? 'OFF';
-        $modeStr    = $data['mode']       ?? 'otomatis';
+$kelembapan = $data['kelembapan'] ?? $data['ph_tanah'] ?? null;
 
         if ($kelembapan === null) {
             $this->warn('⚠️  Field kelembapan tidak ada di payload, skip.');
             return;
         }
 
-        // Simpan ke history_kelembapans (termasuk ph_tanah)
+        // ─── Ambil field dari payload ESP32 ───
+        // ESP32 mengirim: kelembapan, ph_tanah, id_sensor, pump, mode
+        // Field kondisi & uptime tidak ada di firmware — kita hitung sendiri
+        $phTanah  = $data['ph_tanah'] ?? null;
+        $pumpStr  = $data['pump']     ?? 'OFF';
+        $modeStr  = $data['mode']     ?? 'otomatis';
+        $uptime   = $data['uptime']   ?? 0;
+
+        // ─── Hitung kondisi berdasarkan parameter sensor ───
+        $kondisi = $this->hitungKondisi($sensor, (float) $kelembapan, $phTanah ? (float) $phTanah : null);
+
+        // ─── Simpan ke history_kelembapans ───
         HistoryKelembapan::create([
             'id_sensor'  => $sensor->id_sensor,
             'kelembapan' => $kelembapan,
@@ -123,7 +115,7 @@ class MqttListenerCommand extends Command
             'uptime'     => $uptime,
         ]);
 
-        // Update status pompa & mode di kontrol_sirams
+        // ─── Update status pompa & mode di kontrol_sirams ───
         KontrolSiram::updateOrCreate(
             ['id_sensor' => $sensor->id_sensor],
             [
@@ -132,26 +124,60 @@ class MqttListenerCommand extends Command
             ]
         );
 
-        // Update status online sensor
+        // ─── Update status online sensor ───
         $sensor->update(['status' => true]);
 
-        // Broadcast ke browser via Reverb (WebSocket)
+        // ─── Broadcast ke browser via Reverb (WebSocket) ───
         broadcast(new SensorDataUpdated(
             $sensor->id_sensor,
-            $kelembapan,
+            (float) $kelembapan,
             $kondisi,
             $pumpStr,
             $modeStr,
-            $uptime
+            (int) $uptime
         ));
 
-        $this->info("✅ Tersimpan: [{$sensor->nama_sensor}] Kelembapan: {$kelembapan}% | pH: {$phTanah} | Kondisi: {$kondisi} | Pompa: {$pumpStr} | Mode: {$modeStr}");
+        $this->info(
+            "✅ Data disimpan: [{$sensor->nama_sensor}] " .
+            "Kelembapan: {$kelembapan}% | " .
+            "pH: " . ($phTanah ?? 'N/A') . " | " .
+            "Kondisi: {$kondisi} | " .
+            "Pompa: {$pumpStr}"
+        );
+    }
+
+    /**
+     * Hitung kondisi tanah berdasarkan parameter yang sudah diset user.
+     * Jika parameter belum ada, gunakan nilai default.
+     */
+    private function hitungKondisi(Sensor $sensor, float $kelembapan, ?float $ph): string
+    {
+        $param = ParameterPenyiraman::where('id_sensor', $sensor->id_sensor)->first();
+
+        $minKel = $param?->min_kelembapan ?? 40.0;
+        $maxKel = $param?->max_kelembapan ?? 70.0;
+        $minPh  = $param?->min_ph ?? 5.5;
+        $maxPh  = $param?->max_ph ?? 7.0;
+
+        if ($kelembapan < $minKel) {
+            return 'KERING';
+        }
+
+        if ($kelembapan > $maxKel) {
+            return 'BASAH';
+        }
+
+        if ($ph !== null && ($ph < $minPh || $ph > $maxPh)) {
+            return 'PH_ABNORMAL';
+        }
+
+        return 'NORMAL';
     }
 
     private function prosesStatus(string $topic, string $message): void
     {
-        $parts  = explode('/', $topic);
-        $mac    = $this->normalizeMac($parts[2] ?? '');
+        $parts = explode('/', $topic);
+        $mac   = strtoupper(str_replace(':', '', $parts[2] ?? ''));
 
         $data = json_decode($message, true);
         if (!$data) return;
@@ -162,6 +188,6 @@ class MqttListenerCommand extends Command
         $isOnline = (bool) ($data['online'] ?? true);
         $sensor->update(['status' => $isOnline]);
 
-        $this->line("📡 Status dari {$mac}: " . ($isOnline ? '🟢 Online' : '🔴 Offline'));
+        $this->line("📡 Status dari {$mac}: " . ($isOnline ? 'Online ✓' : 'Offline ✗'));
     }
 }

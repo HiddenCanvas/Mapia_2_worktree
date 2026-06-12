@@ -4,7 +4,6 @@ namespace App\Services;
 
 use PhpMqtt\Client\Exceptions\ConnectingToBrokerFailedException;
 use PhpMqtt\Client\Exceptions\FailedToSubscribeTopicException;
-use PhpMqtt\Client\Exceptions\ProtocolViolationException;
 use PhpMqtt\Client\Exceptions\PingFailedException;
 use PhpMqtt\Client\MqttClient;
 use PhpMqtt\Client\ConnectionSettings;
@@ -13,21 +12,34 @@ use Illuminate\Support\Facades\Log;
 class MqttService
 {
     private $mqtt;
-    private $broker;
-    private $port;
-    private $username;
-    private $password;
+    private string $broker;
+    private int    $port;
+    private string $username;
+    private string $password;
 
     public function __construct()
     {
-        $this->broker = env('MQTT_BROKER', 'x1517f89.ala.asia-southeast1.emqxsl.com');
-        $this->port = env('MQTT_PORT', 8883);
+        $this->broker   = env('MQTT_BROKER', 'x1517f89.ala.asia-southeast1.emqxsl.com');
+        $this->port     = (int) env('MQTT_PORT', 8883);
         $this->username = env('MQTT_USERNAME', 'Mapia');
         $this->password = env('MQTT_PASSWORD', 'Mapia123');
     }
 
+    // ─── Buat ConnectionSettings (dipakai baik connect() maupun publish()) ───
+    private function buildSettings(): ConnectionSettings
+    {
+        return (new ConnectionSettings())
+            ->setUsername($this->username)
+            ->setPassword($this->password)
+            ->setUseTls(true)
+            ->setTlsCertificateAuthorityFile(base_path('emqxsl-ca.crt'))
+            ->setTlsVerifyPeer(true)
+            ->setTlsSelfSignedAllowed(false)
+            ->setKeepAliveInterval((int) env('MQTT_KEEP_ALIVE', 60));
+    }
+
     /**
-     * Connect ke EMQX Broker
+     * Connect ke EMQX Broker (untuk listener command — koneksi long-lived)
      */
     public function connect(): bool
     {
@@ -40,23 +52,9 @@ class MqttService
                 MqttClient::MQTT_3_1_1
             );
 
-            // PERBAIKAN DI SINI:
-            // 1. Tambahkan username & password agar bisa login ke EMQX
-            // 2. Ubah setVerifyPeer menjadi setTlsVerifyPeer
-// app/Services/MqttService.php
-
-$connectionSettings = (new ConnectionSettings())
-    ->setUsername($this->username)
-    ->setPassword($this->password)
-    ->setUseTls(true)
-    ->setTlsCertificateAuthorityFile(base_path('emqxsl-ca.crt')) // Mengarah ke file crt di root proyek
-    ->setTlsVerifyPeer(true) // Set true karena kita menggunakan CA certificate yang valid
-    ->setTlsSelfSignedAllowed(false) // Nonaktifkan self-signed karena ini dari CA resmi DigiCert
-    ->setKeepAliveInterval(env('MQTT_KEEP_ALIVE', 60));
-    
-            $this->mqtt->connect($connectionSettings, true);
+            $this->mqtt->connect($this->buildSettings(), true);
             Log::info('[MQTT] ✓ Connected to broker: ' . $this->broker . ':' . $this->port);
-            
+
             return true;
         } catch (ConnectingToBrokerFailedException $e) {
             Log::error('[MQTT] ✗ Failed to connect: ' . $e->getMessage());
@@ -65,58 +63,65 @@ $connectionSettings = (new ConnectionSettings())
     }
 
     /**
-     * Publish ke MQTT Topic
-     */
-/**
-     * Publish ke MQTT Topic
+     * Publish ke MQTT Topic.
+     * PENTING: membuat koneksi baru yang pendek (short-lived),
+     * publish, lalu langsung disconnect — tidak ada connection leak.
      */
     public function publish(string $topic, string $message, int $qos = 1, bool $retain = false): bool
     {
+        $clientId = env('MQTT_CLIENT_ID', 'mapia-publish-') . uniqid();
+        $client   = null;
+
         try {
-            if (!$this->mqtt) {
-                $this->connect();
-            }
+            $client = new MqttClient(
+                $this->broker,
+                $this->port,
+                $clientId,
+                MqttClient::MQTT_3_1_1
+            );
 
-            // Tambahkan validasi ini agar aman jika broker sedang down
-            if (!$this->mqtt) {
-                Log::error('[MQTT] ✗ Publish failed: Client instance is null.');
-                return false;
-            }
-
-            $this->mqtt->publish($topic, $message, $qos, $retain);
+            $client->connect($this->buildSettings(), false);
+            $client->publish($topic, $message, $qos, $retain);
             Log::info('[MQTT] ✓ Published to ' . $topic . ': ' . $message);
-            
+
             return true;
         } catch (\Exception $e) {
             Log::error('[MQTT] ✗ Publish failed: ' . $e->getMessage());
             return false;
+        } finally {
+            // Selalu disconnect meskipun ada error — mencegah connection leak
+            try {
+                $client?->disconnect();
+            } catch (\Exception $e) {
+                // Abaikan error saat disconnect
+            }
         }
     }
+
     /**
-     * Subscribe ke MQTT Topic dengan callback
+     * Subscribe ke MQTT Topic dengan callback (untuk listener command)
      */
     public function subscribe(string $topic, callable $callback, int $qos = 1): void
     {
         try {
-            if (!$this->mqtt) {
+            if (!$this->mqtt || !$this->mqtt->isConnected()) {
                 $this->connect();
             }
 
             $this->mqtt->subscribe($topic, $callback, $qos);
             Log::info('[MQTT] ✓ Subscribed to: ' . $topic);
-            
         } catch (FailedToSubscribeTopicException $e) {
             Log::error('[MQTT] ✗ Subscribe failed: ' . $e->getMessage());
         }
     }
 
     /**
-     * Loop untuk listen MQTT messages
+     * Loop untuk listen MQTT messages (untuk listener command)
      */
     public function loop(): void
     {
         try {
-            if ($this->mqtt) {
+            if ($this->mqtt && $this->mqtt->isConnected()) {
                 $this->mqtt->loop(true);
             }
         } catch (PingFailedException $e) {
@@ -125,12 +130,12 @@ $connectionSettings = (new ConnectionSettings())
     }
 
     /**
-     * Disconnect dari MQTT
+     * Disconnect dari MQTT (untuk listener command)
      */
     public function disconnect(): void
     {
         try {
-            if ($this->mqtt) {
+            if ($this->mqtt && $this->mqtt->isConnected()) {
                 $this->mqtt->disconnect();
                 Log::info('[MQTT] ✓ Disconnected');
             }
@@ -140,7 +145,7 @@ $connectionSettings = (new ConnectionSettings())
     }
 
     /**
-     * Get MQTT client instance
+     * Get MQTT client instance (untuk listener command)
      */
     public function getClient(): ?MqttClient
     {
