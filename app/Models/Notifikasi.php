@@ -10,7 +10,11 @@ class Notifikasi extends Model
     protected $primaryKey = 'id_notif';
     public    $timestamps = false;
 
-    protected $fillable   = ['id_jenis_notif', 'id_user', 'tanggal', 'waktu', 'isi_data'];
+    protected $fillable   = ['id_jenis_notif', 'id_user', 'tanggal', 'waktu', 'isi_data', 'dibaca'];
+
+    protected $casts = [
+        'dibaca' => 'boolean',
+    ];
 
     public function jenisNotif()
     {

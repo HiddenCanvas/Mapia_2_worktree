@@ -26,8 +26,18 @@ class User extends Authenticatable
     protected $table = 'users'; // Nama tabel jamak
     protected $primaryKey = 'id_user';
 
-    protected $fillable = ['nama', 'email', 'password'];
+    protected $fillable = ['nama', 'email', 'password', 'role'];
     protected $hidden = ['password'];
+
+    public function isAdmin(): bool
+    {
+        return $this->role === 'admin';
+    }
+
+    public function roleLabel(): string
+    {
+        return $this->isAdmin() ? 'Administrator' : 'Petani';
+    }
 
     public function sensors()
     {
@@ -38,6 +48,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'role' => 'string',
         ];
     }
 }
