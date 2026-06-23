@@ -1,5 +1,4 @@
 @extends('layouts.app')
-
 @section('title', 'Kontrol Penyiraman')
 @section('page-title', 'Kontrol Penyiraman')
 @section('page-subtitle', 'Kendalikan pompa air untuk setiap sensor secara langsung')
@@ -407,5 +406,44 @@ function updateSensorCard(sensorId, data) {
             now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     }
 }
+
+document.addEventListener('DOMContentLoaded', function () {
+    const cards = Array.from(document.querySelectorAll('[data-sensor-id]'));
+    if (!cards.length) {
+        return;
+    }
+
+    const pollSensor = async function (sensorId) {
+        try {
+            const response = await fetch('/api/v1/sensors/' + sensorId + '/live', {
+                headers: {
+                    'Accept': 'application/json',
+                    'Cache-Control': 'no-cache'
+                },
+                cache: 'no-store'
+            });
+
+            if (!response.ok) {
+                throw new Error('HTTP ' + response.status);
+            }
+
+            const payload = await response.json();
+            if (payload.status === 'success' && payload.data) {
+                updateSensorCard(sensorId, payload.data);
+            }
+        } catch (error) {
+            console.warn('[MAPIA] Gagal polling sensor ' + sensorId, error);
+        }
+    };
+
+    const pollAllSensors = function () {
+        cards.forEach(function (card) {
+            pollSensor(card.dataset.sensorId);
+        });
+    };
+
+    pollAllSensors();
+    setInterval(pollAllSensors, 5000);
+});
 </script>
 @endpush
