@@ -69,9 +69,7 @@ class MonitoringController extends Controller
             ['mode_auto' => true, 'status_pompa' => false]
         );
 
-        // Checkbox tidak terkirim = unchecked = manual, terkirim = otomatis
         $modeAuto = $request->has('mode_auto');
-
         $kontrolSiram->update(['mode_auto' => $modeAuto]);
 
         $modeText = $modeAuto ? 'Otomatis' : 'Manual';
@@ -86,12 +84,12 @@ class MonitoringController extends Controller
 
         // Catat riwayat perubahan mode
         RiwayatPenyiraman::create([
-            'id_sensor'      => $id,
-            'mode'           => $modeAuto ? 'otomatis' : 'manual',
-            'status'         => 'berhasil',
-            'waktu_mulai'    => now(),
-            'waktu_selesai'  => now(),
-            'keterangan'     => 'Perubahan mode penyiraman menjadi ' . $modeText,
+            'id_sensor'     => $id,
+            'mode'          => $modeAuto ? 'otomatis' : 'manual',
+            'status'        => 'berhasil',
+            'waktu_mulai'   => now(),
+            'waktu_selesai' => now(),
+            'keterangan'    => 'Perubahan mode penyiraman menjadi ' . $modeText,
         ]);
 
         // Notifikasi
@@ -107,10 +105,8 @@ class MonitoringController extends Controller
             'isi_data'       => "Mode penyiraman untuk sensor {$sensor->nama_sensor} diubah menjadi {$modeText}.",
         ]);
 
-        // ✅ FIX: gunakan MAC yang sudah dinormalisasi (tanpa titik dua, uppercase)
-        $mac   = $this->normalizeMac($sensor->mac_address);
-        $topic = 'mapia/sensor/' . $mac . '/mode';
-
+        $mac       = $this->normalizeMac($sensor->mac_address);
+        $topic     = 'mapia/sensor/' . $mac . '/mode';
         $published = $this->mqttService->publish($topic, $modeText);
 
         Log::info("[Monitoring] toggleMode sensor={$id} mode={$modeText} mac={$mac} mqtt=" . ($published ? 'ok' : 'gagal'));
@@ -125,15 +121,8 @@ class MonitoringController extends Controller
     public function nyalakan($id)
     {
         $sensor = Sensor::where('id_user', Auth::id())->findOrFail($id);
+        $mac    = $this->normalizeMac($sensor->mac_address);
 
-        // Cek apakah mode otomatis aktif — jangan izinkan kontrol manual
-        $kontrolSiram = KontrolSiram::where('id_sensor', $id)->first();
-        if ($kontrolSiram && $kontrolSiram->mode_auto) {
-            return back()->with('error', 'Tidak bisa menyalakan pompa saat mode otomatis aktif.');
-        }
-
-        // Cek apakah mode otomatis aktif — jangan izinkan kontrol manual
-        // Hindari duplikat sesi
         $sudahAktif = RiwayatPenyiraman::where('id_sensor', $id)
             ->whereNull('waktu_selesai')
             ->exists();
@@ -147,15 +136,13 @@ class MonitoringController extends Controller
                 'waktu_selesai' => null,
                 'keterangan'    => 'Dinyalakan manual oleh pengguna',
             ]);
-        }
 
-        // Tetap sinkronkan status dan kirim MQTT meskipun sesi aktif sudah ada.
-        KontrolSiram::updateOrCreate(
-            ['id_sensor' => $id],
-            ['status_pompa' => true, 'mode_auto' => false]
-        );
+            // Update status pompa di DB
+            KontrolSiram::updateOrCreate(
+                ['id_sensor' => $id],
+                ['status_pompa' => true, 'mode_auto' => false]
+            );
 
-        if (!$sudahAktif) {
             // Notifikasi
             $jenisNotif = JenisNotif::firstOrCreate(
                 ['kategori' => 9],
@@ -170,13 +157,19 @@ class MonitoringController extends Controller
             ]);
         }
 
-        // ✅ FIX: normalisasi MAC sebelum publish
-        $mac   = $this->normalizeMac($sensor->mac_address);
-        $topic = 'mapia/actuator/' . $mac . '/pump';
+        KontrolSiram::updateOrCreate(
+            ['id_sensor' => $id],
+            ['status_pompa' => true, 'mode_auto' => false]
+        );
 
-        $published = $this->mqttService->publish($topic, 'ON');
+        $modeTopic = 'mapia/sensor/' . $mac . '/mode';
+        $pumpTopic = 'mapia/actuator/' . $mac . '/pump';
 
-        Log::info("[Monitoring] nyalakan sensor={$id} mac={$mac} topic={$topic} mqtt=" . ($published ? 'ok' : 'gagal'));
+        $modePublished = $this->mqttService->publish($modeTopic, 'Manual');
+        usleep(200000);
+        $pumpPublished = $this->mqttService->publish($pumpTopic, 'ON');
+
+        Log::info("[Monitoring] nyalakan sensor={$id} mac={$mac} modeTopic={$modeTopic} modeMqtt=" . ($modePublished ? 'ok' : 'gagal') . " pumpTopic={$pumpTopic} pumpMqtt=" . ($pumpPublished ? 'ok' : 'gagal'));
 
         return back()->with('success', 'Pompa berhasil dinyalakan.');
     }
@@ -213,10 +206,8 @@ class MonitoringController extends Controller
             'isi_data'       => "Pompa air untuk sensor {$sensor->nama_sensor} dimatikan secara manual.",
         ]);
 
-        // ✅ FIX: normalisasi MAC sebelum publish
-        $mac   = $this->normalizeMac($sensor->mac_address);
-        $topic = 'mapia/actuator/' . $mac . '/pump';
-
+        $mac       = $this->normalizeMac($sensor->mac_address);
+        $topic     = 'mapia/actuator/' . $mac . '/pump';
         $published = $this->mqttService->publish($topic, 'OFF');
 
         Log::info("[Monitoring] matikan sensor={$id} mac={$mac} topic={$topic} mqtt=" . ($published ? 'ok' : 'gagal'));

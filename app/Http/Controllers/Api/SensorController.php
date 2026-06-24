@@ -22,11 +22,6 @@ class SensorController extends Controller
         $this->mqttService = new MqttService();
     }
 
-    private function normalizeMac(string $mac): string
-    {
-        return strtoupper(str_replace(':', '', $mac));
-    }
-
     /**
      * ✅ Endpoint untuk ESP32 mengirim data sensor
      * POST /api/v1/send-data
@@ -328,7 +323,8 @@ class SensorController extends Controller
                 ['mode_auto' => $validated['mode'] === 'otomatis']
             );
 
-            $topic = 'mapia/sensor/' . $this->normalizeMac($sensor->mac_address) . '/mode';
+            $mac   = strtoupper(str_replace(':', '', $sensor->mac_address));
+            $topic = 'mapia/sensor/' . $mac . '/mode';
             $message = ($validated['mode'] === 'otomatis') ? 'Otomatis' : 'Manual';
             $this->mqttService->publish($topic, $message);
 
@@ -378,7 +374,7 @@ class SensorController extends Controller
             );
 
             // Publish ke MQTT → ESP32 akan langsung terima dan nyalakan/matikan relay
-            $topic = 'mapia/actuator/' . $this->normalizeMac($sensor->mac_address) . '/pump';
+            $topic = 'mapia/actuator/' . strtoupper(str_replace(':', '', $sensor->mac_address)) . '/pump';
             $this->mqttService->publish($topic, $validated['action']);
 
             Log::info('[API] Pump ' . $validated['action'] . ' for sensor ' . $sensorId . ' via MQTT topic: ' . $topic);
@@ -407,7 +403,7 @@ class SensorController extends Controller
             $sensor = Sensor::find($sensorId);
             if (!$sensor) return;
 
-            $topic = 'mapia/sensor/' . $this->normalizeMac($sensor->mac_address) . '/parameter';
+            $topic = 'mapia/sensor/' . strtoupper(str_replace(':', '', $sensor->mac_address)) . '/parameter';
             $message = json_encode([
                 'min_kel' => $params['min_kelembapan'],
                 'max_kel' => $params['max_kelembapan'],
